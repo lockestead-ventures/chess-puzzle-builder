@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import UnifiedGameInput from './UnifiedGameInput';
 import PuzzleList from './PuzzleList';
 
@@ -14,6 +14,8 @@ const Home = () => {
     details: ''
   });
   const [backendDone, setBackendDone] = useState(false);
+  const [loadTime, setLoadTime] = useState(null); // Track backend loading time
+  const puzzleListRef = useRef(null); // Ref for auto-scroll
 
   // Simulate progress updates during loading
   useEffect(() => {
@@ -21,15 +23,15 @@ const Home = () => {
 
     // Main progress stages (messages and their target percentages)
     const progressStages = [
-      { stage: 'init', message: '🚀 Initializing analysis system...', percentage: 8, details: 'Setting up chess engines and databases' },
-      { stage: 'fetch', message: '📥 Fetching your games...', percentage: 18, details: 'Retrieving recent games from chess.com' },
-      { stage: 'load', message: '🔍 Loading game positions...', percentage: 28, details: 'Extracting tactical positions from your games' },
-      { stage: 'analyze', message: '🧠 Loading tactical evaluation models...', percentage: 38, details: 'Initializing advanced chess analysis algorithms' },
-      { stage: 'process', message: '⚡ Analyzing positions for tactical opportunities...', percentage: 55, details: 'Scanning through game positions for puzzles' },
-      { stage: 'create', message: '🎯 Creating puzzle challenges...', percentage: 75, details: 'Generating tactical puzzles from your games' },
-      { stage: 'validate', message: '✅ Validating puzzle quality...', percentage: 88, details: 'Ensuring puzzles meet quality standards' },
-      { stage: 'finalize', message: '🎉 Finalizing your puzzle collection...', percentage: 95, details: 'Preparing puzzles for display' },
-      { stage: 'complete', message: '✨ Analysis complete!', percentage: 100, details: 'Your puzzles are ready' }
+      { stage: 'init', message: 'Initializing analysis system...', percentage: 8, details: 'Setting up chess engines and databases' },
+      { stage: 'fetch', message: 'Fetching your games...', percentage: 18, details: 'Retrieving recent games from chess.com' },
+      { stage: 'load', message: 'Loading game positions...', percentage: 28, details: 'Extracting tactical positions from your games' },
+      { stage: 'analyze', message: 'Loading tactical evaluation models...', percentage: 38, details: 'Initializing advanced chess analysis algorithms' },
+      { stage: 'process', message: 'Analyzing positions for tactical opportunities...', percentage: 55, details: 'Scanning through game positions for puzzles' },
+      { stage: 'create', message: 'Creating puzzle challenges...', percentage: 75, details: 'Generating tactical puzzles from your games' },
+      { stage: 'validate', message: 'Validating puzzle quality...', percentage: 88, details: 'Ensuring puzzles meet quality standards' },
+      { stage: 'finalize', message: 'Finalizing your puzzle collection...', percentage: 95, details: 'Preparing puzzles for display' },
+      { stage: 'complete', message: 'Analysis complete!', percentage: 100, details: 'Your puzzles are ready' }
     ];
 
     let currentStage = 0;
@@ -46,20 +48,14 @@ const Home = () => {
       return progressStages[0];
     };
 
-    // Calculate how many ms per percent step for each stage
-    const getStepDuration = (from, to) => {
-      // Longer for early stages, faster for later
-      if (to <= 38) return 60; // slowest
-      if (to <= 75) return 40; // medium
-      if (to < 100) return 25; // fast
-      return 10; // finish very fast
-    };
+    // Use a constant duration for each percent step for a smooth animation
+    const getStepDuration = () => 100; // 100ms per step = 10s total
 
     // Animate from 0 to 100%
     const animate = () => {
       if (currentPercent >= 100) {
         setProgress(progressStages[progressStages.length - 1]);
-        clearInterval(intervalId);
+        clearTimeout(intervalId);
         return;
       }
       // Find the next stage
@@ -80,7 +76,7 @@ const Home = () => {
       // Increment percent
       currentPercent++;
       // Duration for this step
-      const duration = getStepDuration(progressStages[currentStage].percentage, targetPercent);
+      const duration = getStepDuration();
       intervalId = setTimeout(animate, duration);
     };
 
@@ -93,6 +89,20 @@ const Home = () => {
     return () => clearTimeout(intervalId);
   }, [loading]);
 
+  // Add effect to only end loading when both backendDone and progress.percentage === 100
+  useEffect(() => {
+    if (backendDone && progress.percentage === 100) {
+      setLoading(false);
+    }
+  }, [backendDone, progress.percentage]);
+
+  // Auto-scroll to puzzles when they become visible
+  useEffect(() => {
+    if (!loading && backendDone && progress.percentage === 100 && puzzles && puzzleListRef.current) {
+      puzzleListRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [loading, backendDone, progress.percentage, puzzles]);
+
   const handlePuzzleGeneration = async (inputData) => {
     setLoading(true);
     setError(null);
@@ -101,11 +111,12 @@ const Home = () => {
     setBackendDone(false);
     setProgress({
       stage: 'init',
-      message: '🚀 Initializing analysis system...',
+      message: 'Initializing analysis system...',
       percentage: 8,
       details: 'Setting up chess engines and databases'
     });
-
+    setLoadTime(null); // Reset load time
+    const startTime = Date.now(); // Start timer
     try {
       const response = await fetch('/api/games/import', {
         method: 'POST',
@@ -117,6 +128,9 @@ const Home = () => {
       setPuzzles(data.puzzles);
       setGameData(data);
       setBackendDone(true);
+      const elapsed = Date.now() - startTime;
+      setLoadTime(elapsed);
+      console.log(`Puzzle loading time: ${elapsed} ms (${(elapsed/1000).toFixed(2)} seconds)`);
     } catch (err) {
       setError(err.message || 'Failed to generate puzzles');
       setLoading(false);
@@ -147,7 +161,6 @@ const Home = () => {
           boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
           transition: 'all 0.4s ease'
         }}>
-          <div style={{ fontSize: '18px', color: '#0066cc', marginBottom: '10px' }}>⏳</div>
           <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
             We've found your games and analyzed them.
           </div>
@@ -157,6 +170,37 @@ const Home = () => {
           <div style={{ fontSize: '12px', color: '#999', fontFamily: 'monospace' }}>
             This usually takes just a few more seconds.
           </div>
+        </div>
+      );
+    }
+
+    // If progress is complete and backend is done, show analysis complete with summary
+    if (progress.percentage >= 100 && backendDone) {
+      return (
+        <div style={{
+          textAlign: 'left',
+          padding: '25px',
+          border: '1px solid #b3d1ff',
+          borderRadius: '12px',
+          backgroundColor: '#eaf4ff',
+          marginBottom: '20px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          transition: 'all 0.4s ease',
+          color: '#003366',
+          fontFamily: 'monospace',
+        }}>
+          <div style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px', textAlign: 'center' }}>
+            Analysis complete!
+          </div>
+          {gameData?.summary && (
+            <div style={{ fontSize: '15px', margin: '10px 0 0 0', fontWeight: 400 }}>
+              <div><strong>Platform:</strong> {gameData.summary.platform || '—'}</div>
+              <div><strong>Username:</strong> {gameData.summary.username || '—'}</div>
+              <div><strong>Games Analyzed:</strong> {gameData.summary.gamesImported ?? '—'}</div>
+              <div><strong>Puzzles Generated:</strong> {gameData.summary.puzzlesGenerated ?? puzzles?.length}</div>
+              <div><strong>Processing Time:</strong> {gameData.summary.processingTime || '—'}</div>
+            </div>
+          )}
         </div>
       );
     }
@@ -285,8 +329,18 @@ const Home = () => {
         <UnifiedGameInput onGenerate={handlePuzzleGeneration} />
       </div>
 
-      {/* Sophisticated Loading State */}
-      {loading && <ProgressIndicator />}
+      {/* Progress and loading */}
+      {loading && !(backendDone && progress.percentage === 100 && puzzles) && (
+        <>
+          <ProgressIndicator />
+          {/* Show load time if available (for debugging) */}
+          {loadTime && (
+            <div style={{ textAlign: 'center', color: '#888', fontSize: '12px', marginBottom: '10px' }}>
+              Backend loading time: {(loadTime/1000).toFixed(2)} seconds
+            </div>
+          )}
+        </>
+      )}
 
       {/* Error State */}
       {error && (
@@ -305,26 +359,25 @@ const Home = () => {
       {/* Results */}
       {puzzles && gameData && (
         <div>
-          {/* Game Summary */}
-          <div style={{ border: '1px solid #ccc', padding: '15px', marginBottom: '20px' }}>
-            <h3 style={{ marginTop: 0 }}>Analysis Complete</h3>
-            <div>
-              <p><strong>Username:</strong> {gameData.username}</p>
-              <p><strong>Platform:</strong> {gameData.platform}</p>
-              <p><strong>Games Analyzed:</strong> {gameData.gamesImported}</p>
-              <p><strong>Puzzles Generated:</strong> {puzzles.length}</p>
-              <p><strong>Processing Time:</strong> {gameData.processingTime || '~2 minutes'}</p>
-            </div>
-          </div>
-
           {/* Puzzles List */}
           <div>
             <h3>Your Personalized Puzzles ({puzzles.length})</h3>
             <p style={{ fontSize: '14px', color: '#666', marginBottom: '15px' }}>
               These puzzles are based on positions from your actual games where you missed tactical opportunities.
             </p>
-            
-            <PuzzleList puzzles={puzzles} />
+            {/* Only show puzzles when loading is false, backendDone is true, and progress is 100% */}
+            {!loading && backendDone && progress.percentage === 100 && puzzles && (
+              <div ref={puzzleListRef}>
+                <PuzzleList puzzles={puzzles} summary={gameData?.summary} />
+              </div>
+            )}
+            {/* If progress is 100% but backend is not done, show a still loading message */}
+            {loading && progress.percentage === 100 && !backendDone && (
+              <div style={{ textAlign: 'center', color: '#888', fontSize: '14px', marginTop: '20px' }}>
+                Still generating puzzles on the server...<br />
+                This may take a few more seconds.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -339,19 +392,19 @@ const Home = () => {
         <h3 style={{ marginTop: 0 }}>Why Personalized Puzzles Work Better</h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: '14px' }}>
           <div>
-            <strong>🎯 Targeted Learning</strong>
+            <strong>Targeted Learning</strong>
             <p>Puzzles from your games focus on your specific weaknesses</p>
           </div>
           <div>
-            <strong>📈 Real Improvement</strong>
+            <strong>Real Improvement</strong>
             <p>Learn from positions you actually encounter in your games</p>
           </div>
           <div>
-            <strong>⚡ Fast & Focused</strong>
+            <strong>Fast & Focused</strong>
             <p>5 high-quality puzzles from your last 10 games</p>
           </div>
           <div>
-            <strong>🔄 Continuous Updates</strong>
+            <strong>Continuous Updates</strong>
             <p>New puzzles as you play more games</p>
           </div>
         </div>

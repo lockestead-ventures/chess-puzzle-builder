@@ -43,7 +43,7 @@ const Header = () => {
               fontWeight: 'bold'
             }}
           >
-            ♔ CHESS PUZZLE BUILDER
+            CHESS PUZZLE BUILDER
           </Link>
 
           {/* Navigation */}
@@ -56,7 +56,7 @@ const Header = () => {
                 fontSize: '14px'
               }}
             >
-              🏠 Home
+              Home
             </Link>
             <Link 
               to="/analysis" 
@@ -66,7 +66,7 @@ const Header = () => {
                 fontSize: '14px'
               }}
             >
-              📊 Analysis
+              Analysis
             </Link>
           </nav>
 
@@ -75,7 +75,7 @@ const Header = () => {
             {user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                 <span style={{ fontSize: '14px', color: '#333' }}>
-                  👤 {user.username}
+                  {user.username}
                 </span>
                 <button
                   onClick={handleLogout}

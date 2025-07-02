@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const PuzzleGenerator = require('../services/puzzleGenerator');
-const Puzzle = require('../models/Puzzle');
+const puzzleModel = require('../models/Puzzle');
 
 const puzzleGenerator = new PuzzleGenerator();
-const puzzleModel = new Puzzle();
 
 /**
  * POST /api/puzzles/generate

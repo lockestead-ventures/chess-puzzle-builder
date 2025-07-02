@@ -179,11 +179,16 @@ const PuzzleSolver = () => {
   const getBoardFenAtMove = (moveIndex) => {
     if (!puzzle) return chess.fen();
     const tempChess = new Chess(puzzle.position);
+    // Debug: print the full move list
+    if (puzzle.solution && puzzle.solution.moves) {
+      console.log('[DEBUG] Full solution.moves:', puzzle.solution.moves);
+    }
     // If moveIndex is 0, show the position before the last move (if available)
     if (moveIndex === 0) {
       // If there is a lastMove in puzzle, play all moves except the last one
       if (puzzle.lastMove && puzzle.moveHistory) {
         for (let i = 0; i < puzzle.moveHistory.length - 1; i++) {
+          console.log(`[DEBUG] About to play move: ${puzzle.moveHistory[i]} on FEN: ${tempChess.fen()}`);
           tempChess.move(puzzle.moveHistory[i], { sloppy: true });
         }
         return tempChess.fen();
@@ -192,6 +197,7 @@ const PuzzleSolver = () => {
     }
     // Play moves up to moveIndex
     for (let i = 0; i < moveIndex && i < puzzle.solution.moves.length; i++) {
+      console.log(`[DEBUG] About to play move: ${puzzle.solution.moves[i]} on FEN: ${tempChess.fen()}`);
       tempChess.move(puzzle.solution.moves[i], { sloppy: true });
     }
     return tempChess.fen();

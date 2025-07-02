@@ -198,4 +198,6 @@ class Puzzle {
   }
 }
 
-module.exports = Puzzle; 
+// Export a singleton instance
+const puzzleInstance = new Puzzle();
+module.exports = puzzleInstance; 

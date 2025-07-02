@@ -3,6 +3,7 @@ const router = express.Router();
 const ChessComService = require('../services/chessComService');
 const lichessService = require('../services/lichessService');
 const PuzzleGenerator = require('../services/puzzleGenerator');
+const puzzleModel = require('../models/Puzzle');
 
 const chessComService = new ChessComService();
 const puzzleGenerator = new PuzzleGenerator();
@@ -283,23 +284,27 @@ router.post('/import', async (req, res) => {
 
         let puzzleResult;
         if (platform === 'chess.com' || platform === 'chesscom') {
-          // Pass the full game object (with PGN) directly
           if (!game.pgn) {
             console.log('⚠️ Skipping game without PGN:', game);
             continue;
           }
-          // Add platform property for downstream logic
           game.platform = 'chess.com';
           puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(game);
         } else {
-          // For lichess, pass the game URL
           puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(`https://lichess.org/${game.id}`);
         }
         if (puzzleResult.puzzles && puzzleResult.puzzles.length > 0) {
-          // Add puzzles but respect the max limit
           const remainingSlots = maxPuzzles - allPuzzles.length;
           const puzzlesToAdd = puzzleResult.puzzles.slice(0, remainingSlots);
-          allPuzzles.push(...puzzlesToAdd);
+          // Save each puzzle to the in-memory store and collect the saved versions
+          for (const puzzle of puzzlesToAdd) {
+            const savedPuzzle = puzzleModel.createPuzzle({
+              ...puzzle,
+              userId: null, // No userId for now
+              gameId: game.id
+            });
+            allPuzzles.push(savedPuzzle);
+          }
         }
         processedGames++;
       } catch (error) {

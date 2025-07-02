@@ -94,9 +94,23 @@ class PuzzleGenerator {
       console.log('✨ Finalizing puzzle quality checks...');
       await new Promise(resolve => setTimeout(resolve, 250));
       
+      // Sort puzzles by difficulty (evaluation strength)
+      const sorted = puzzles.sort((a, b) => Math.abs(b.evaluation) - Math.abs(a.evaluation));
+      // Only keep puzzles with difficulty >= 2
+      const filtered = sorted.filter(p => p.difficulty >= 2);
+      // Only allow one 2-star puzzle (if any)
+      let twoStarIncluded = false;
+      const finalPuzzles = filtered.filter(p => {
+        if (p.difficulty > 2) return true;
+        if (p.difficulty === 2 && !twoStarIncluded) {
+          twoStarIncluded = true;
+          return true;
+        }
+        return false;
+      });
       return {
         game: transformedGameData,
-        puzzles,
+        puzzles: finalPuzzles,
         summary: {
           totalPositions: positions.length,
           tacticalPositions: tacticalPositions.length,
@@ -438,8 +452,7 @@ class PuzzleGenerator {
     console.log('📋 Compiling final puzzle collection...');
     await new Promise(resolve => setTimeout(resolve, 150));
     
-    // Sort puzzles by difficulty (evaluation strength)
-    return puzzles.sort((a, b) => Math.abs(b.evaluation) - Math.abs(a.evaluation));
+    return puzzles;
   }
 
   /**
@@ -466,25 +479,59 @@ class PuzzleGenerator {
         return null;
       }
       
+      // Determine the last move played before the puzzle position
+      let lastMove = null;
+      try {
+        const chess = puzzlePosition.isChess960 ? new Chess({ variant: 'chess960' }) : new Chess();
+        chess.loadPgn(gameData.pgn);
+        const history = chess.history();
+        const movesBack = Math.min(2, position.moveNumber);
+        const targetMoveNumber = position.moveNumber - movesBack;
+        if (targetMoveNumber > 0 && history[targetMoveNumber - 1]) {
+          lastMove = history[targetMoveNumber - 1];
+        }
+      } catch (e) {
+        lastMove = null;
+      }
+      
       // Determine tactical theme
       const theme = this.determineTacticalTheme(analysis, position);
       
       // Calculate difficulty
       const difficulty = this.calculateDifficulty(analysis.evaluation, theme);
       
-      // Generate explanation
-      const explanation = this.generateExplanation(analysis, theme, position);
+      // Generate explanation and clue for the puzzle
+      const explanation = this.generateExplanation(analysis, theme, position, lastMove, position.moveNumber, position.color, analysis.bestMove);
+      
+      // Determine the FEN before the original move
+      let fenBeforeOriginalMove = null;
+      try {
+        const chess = puzzlePosition.isChess960 ? new Chess({ variant: 'chess960' }) : new Chess();
+        chess.loadPgn(gameData.pgn);
+        const history = chess.history();
+        // The original move is at position.moveNumber-1 in history
+        // So the FEN before it is after playing up to position.moveNumber-2
+        chess.reset();
+        for (let i = 0; i < position.moveNumber - 1 && i < history.length; i++) {
+          chess.move(history[i]);
+        }
+        fenBeforeOriginalMove = chess.fen();
+      } catch (e) {
+        fenBeforeOriginalMove = null;
+      }
       
       return {
         id: `puzzle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         position: puzzlePosition.fen,
         solution: {
-          moves: [analysis.bestMove, ...analysis.pv.slice(0, 3)],
+          moves: [analysis.bestMove, ...analysis.pv.slice(1, 3)],
           evaluation: analysis.evaluation
         },
         theme,
         difficulty,
         explanation,
+        lastMove,
+        fenBeforeOriginalMove,
         gameContext: {
           moveNumber: position.moveNumber,
           originalMove: position.move,
@@ -600,32 +647,131 @@ class PuzzleGenerator {
   }
 
   /**
-   * Generate explanation for the puzzle
+   * Generate explanation and clue for the puzzle
    */
-  generateExplanation(analysis, theme, position) {
-    const absEval = Math.abs(analysis.evaluation);
-    const isWinning = analysis.evaluation > 0;
-    
-    let explanation = '';
-    
+  generateExplanation(analysis, theme, position, lastMove, puzzleMoveNumber, playerColor, bestMoveSan) {
+    // Helper to convert SAN to full piece name and location
+    function sanToText(san) {
+      if (!san) return '';
+      const pieceMap = { K: 'King', Q: 'Queen', R: 'Rook', B: 'Bishop', N: 'Knight' };
+      let match = san.match(/([KQRBN])?([a-h]?[1-8]?)x?([a-h][1-8])(=?[QRBN])?(\+|#)?/);
+      if (!match) return san;
+      let piece = match[1] ? pieceMap[match[1]] : 'Pawn';
+      let to = match[3];
+      let capture = san.includes('x');
+      let promo = match[4] ? ' promoting to ' + pieceMap[match[4].replace('=','')] : '';
+      let check = san.includes('+') ? ' with check' : '';
+      let mate = san.includes('#') ? ' with mate' : '';
+      return `${piece} to ${to}${capture ? ' capturing' : ''}${promo}${check}${mate}`;
+    }
+
+    // General, non-spoiler description
+    let description = '';
     switch (theme) {
       case 'mate':
-        explanation = `This position contains a forced checkmate sequence. The best move leads to mate in ${Math.abs(analysis.mate || 5)} moves.`;
+        description = 'A checkmate is possible in this position. Can you find the winning sequence?';
         break;
       case 'winning_combination':
-        explanation = `This is a winning tactical combination. The best move gives a decisive advantage of ${absEval.toFixed(1)} pawns.`;
+        description = 'There is a combination here that leads to a decisive advantage.';
         break;
       case 'tactical_advantage':
-        explanation = `This position offers a strong tactical advantage. The best move improves the position by ${absEval.toFixed(1)} pawns.`;
+        description = 'A tactical opportunity has arisen—look for a way to gain material.';
         break;
       case 'positional_advantage':
-        explanation = `This position has a clear tactical opportunity. The best move gives a positional advantage of ${absEval.toFixed(1)} pawns.`;
+        description = 'A better move is available to improve your position.';
+        break;
+      case 'tactical_opportunity':
+        description = 'There is a tactical chance in this position.';
         break;
       default:
-        explanation = `This position contains a tactical opportunity. The best move improves the position.`;
+        description = 'There is an opportunity in this position.';
     }
-    
-    return explanation;
+    if (lastMove) {
+      description += ` The last move played was ${sanToText(lastMove)}.`;
+    }
+
+    // Vague, non-spoiler clue for home page
+    function vagueClue(san) {
+      if (!san) return '';
+      const pieceMap = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight' };
+      let match = san.match(/([KQRBN])?([a-h]?[1-8]?)x?([a-h][1-8])(=?[QRBN])?(\+|#)?/);
+      let piece = match && match[1] ? pieceMap[match[1]] : 'pawn';
+      let to = match && match[3] ? match[3] : '';
+      let capture = san.includes('x');
+      let promo = match && match[4] ? match[4].replace('=','') : '';
+      let check = san.includes('+');
+      let mate = san.includes('#');
+      // Underpromotion
+      let promoPiece = promo ? pieceMap[promo] || promo : null;
+      // Build witty, context-aware clues
+      if (mate) return "Checkmate is in the air—can you spot the final blow?";
+      if (check) return "A check could shake things up—look for a bold move.";
+      if (promoPiece && promoPiece !== 'queen') return `A rare underpromotion to a ${promoPiece} might surprise your opponent.`;
+      if (promoPiece && promoPiece === 'queen') return `A pawn's dream: promotion to a queen is within reach.`;
+      switch (piece) {
+        case 'bishop':
+          return to ? `The bishop's diagonal gaze is never innocent—what's happening on ${to}?` : "The bishop's diagonal gaze is never innocent.";
+        case 'knight':
+          return to ? `That knight is itching for mischief on ${to}.` : 'That knight is itching for mischief.';
+        case 'rook':
+          return to ? `Rooks love open roads—can you clear the way to ${to}?` : 'Rooks love open roads—can you clear the way?';
+        case 'queen':
+          return to ? `The queen is plotting—her eyes are on ${to}.` : 'The queen is plotting—can you see her plan?';
+        case 'king':
+          return to ? `Kings may look safe, but looks can be deceiving—especially near ${to}.` : 'Kings may look safe, but looks can be deceiving.';
+        case 'pawn':
+          if (capture && to) return `A humble pawn could stir up trouble by capturing on ${to}.`;
+          if (to) return `A pawn push to ${to} could change the game.`;
+          return 'A pawn push could stir up trouble.';
+        default:
+          return 'Something sneaky is brewing on the board.';
+      }
+    }
+
+    // More detailed clue for puzzle solving screen
+    function detailedClue(san) {
+      if (!san) return vagueClue(san);
+      const pieceMap = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight' };
+      let match = san.match(/([KQRBN])?([a-h]?[1-8]?)x?([a-h][1-8])(=?[QRBN])?(\+|#)?/);
+      let piece = match && match[1] ? pieceMap[match[1]] : 'pawn';
+      let to = match && match[3] ? match[3] : '';
+      let capture = san.includes('x');
+      let check = san.includes('+');
+      let mate = san.includes('#');
+      let clue = '';
+      switch (piece) {
+        case 'bishop':
+          clue = 'Look for a bishop move that could change the game.';
+          break;
+        case 'knight':
+          clue = 'A knight jump could be very powerful here.';
+          break;
+        case 'rook':
+          clue = 'The rook can be decisive on an open file.';
+          break;
+        case 'queen':
+          clue = 'The queen has a strong move available.';
+          break;
+        case 'king':
+          clue = 'King safety is a factor—watch for checks.';
+          break;
+        case 'pawn':
+          clue = 'A pawn push could open things up.';
+          break;
+        default:
+          clue = 'There is a tactical idea here.';
+      }
+      if (capture) clue += ' There may be a capture.';
+      if (check) clue += ' A check is possible.';
+      if (mate) clue += ' There could be mate!';
+      return clue;
+    }
+
+    return {
+      description,
+      clue: vagueClue(bestMoveSan),
+      detailedClue: detailedClue(bestMoveSan)
+    };
   }
 
   /**

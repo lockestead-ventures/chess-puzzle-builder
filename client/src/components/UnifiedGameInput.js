@@ -60,7 +60,7 @@ const UnifiedGameInput = ({ onGenerate }) => {
           }}
         />
         <p style={{ fontSize: '12px', color: '#666', marginTop: '5px' }}>
-          We'll analyze your last 10 games and create 5 personalized puzzles
+          It will only take a minute (or less)!
         </p>
       </div>
 

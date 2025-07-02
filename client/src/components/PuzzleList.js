@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-const PuzzleList = ({ puzzles }) => {
+const PuzzleList = ({ puzzles, summary }) => {
   if (!puzzles || puzzles.length === 0) {
     return (
       <div style={{ 
@@ -24,6 +24,25 @@ const PuzzleList = ({ puzzles }) => {
 
   const getDifficultyStars = (difficulty) => {
     return '★'.repeat(difficulty) + '☆'.repeat(6 - difficulty);
+  };
+
+  // Map backend theme to human-friendly label
+  const getThemeLabel = (theme) => {
+    switch ((theme || '').toLowerCase()) {
+      case 'tactical_advantage':
+        return 'Tactical Blunder';
+      case 'positional_advantage':
+        return 'Better Move Available';
+      case 'winning_combination':
+        return 'Winning Move';
+      case 'mate':
+        return 'Checkmate Opportunity';
+      case 'tactical_opportunity':
+        return 'Tactical Chance';
+      default:
+        // Fallback: prettify the theme string
+        return (theme || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
   };
 
   return (
@@ -49,7 +68,7 @@ const PuzzleList = ({ puzzles }) => {
           </div>
 
           <div style={{ marginBottom: '10px' }}>
-            <strong>Theme:</strong> {puzzle.theme || 'Tactical Opportunity'}
+            <strong>Theme:</strong> {getThemeLabel(puzzle.theme)}
           </div>
 
           {puzzle.explanation && (
@@ -58,9 +77,9 @@ const PuzzleList = ({ puzzles }) => {
             </div>
           )}
 
-          {puzzle.gameContext && (
+          {puzzle.clue && (
             <div style={{ marginBottom: '10px', fontSize: '12px', color: '#666' }}>
-              <strong>Game Context:</strong> Move {puzzle.gameContext.moveNumber}, {puzzle.gameContext.player} to play
+              <strong>Clue:</strong> {puzzle.clue}
             </div>
           )}
 
