@@ -1,0 +1,23 @@
+{
+  "name": "chess-puzzle-backend",
+  "version": "1.0.0",
+  "description": "Backend server for chess puzzle generation",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "chess.js": "^1.0.0-beta.6",
+    "stockfish": "^15.0.0",
+    "axios": "^1.6.0",
+    "pg": "^8.11.3",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+} 

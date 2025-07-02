@@ -1,0 +1,19 @@
+{
+  "name": "chess-puzzle-builder",
+  "version": "1.0.0",
+  "description": "A web application that generates personalized chess puzzles from chess.com games",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm start",
+    "build": "cd client && npm run build",
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install"
+  },
+  "keywords": ["chess", "puzzles", "learning", "tactics"],
+  "author": "Chess Puzzle Builder",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+} 
