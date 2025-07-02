@@ -501,7 +501,30 @@ class PuzzleGenerator {
       const difficulty = this.calculateDifficulty(analysis.evaluation, theme);
       
       // Generate explanation and clue for the puzzle
-      const explanation = this.generateExplanation(analysis, theme, position, lastMove, position.moveNumber, position.color, analysis.bestMove);
+      const puzzleObj = {
+        id: `puzzle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        position: puzzlePosition.fen,
+        solution: {
+          moves: [analysis.bestMove, ...analysis.pv.slice(1, 3)],
+          evaluation: analysis.evaluation
+        },
+        theme,
+        difficulty,
+        lastMove,
+        gameContext: {
+          moveNumber: position.moveNumber,
+          originalMove: position.move,
+          player: position.color,
+          gameUrl: gameData.id
+        },
+        metadata: {
+          createdAt: new Date().toISOString(),
+          engineDepth: analysis.depth,
+          originalPosition: position.fen
+        }
+      };
+      
+      const explanation = this.generateExplanation(analysis, theme, position, lastMove, position.moveNumber, position.color, analysis.bestMove, puzzleObj);
       
       // Determine the FEN before the original move
       let fenBeforeOriginalMove = null;
@@ -521,27 +544,12 @@ class PuzzleGenerator {
       }
       
       return {
-        id: `puzzle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        position: puzzlePosition.fen,
-        solution: {
-          moves: [analysis.bestMove, ...analysis.pv.slice(1, 3)],
-          evaluation: analysis.evaluation
-        },
-        theme,
-        difficulty,
+        ...puzzleObj,
         explanation,
-        lastMove,
         fenBeforeOriginalMove,
-        gameContext: {
-          moveNumber: position.moveNumber,
-          originalMove: position.move,
-          player: position.color,
-          gameUrl: gameData.id
-        },
         metadata: {
-          createdAt: new Date().toISOString(),
-          engineDepth: analysis.depth,
-          originalPosition: position.fen
+          ...puzzleObj.metadata,
+          fenBeforeOriginalMove
         }
       };
     } catch (error) {
@@ -647,131 +655,145 @@ class PuzzleGenerator {
   }
 
   /**
-   * Generate explanation and clue for the puzzle
+   * Helper: Parse SAN to get piece and action
    */
-  generateExplanation(analysis, theme, position, lastMove, puzzleMoveNumber, playerColor, bestMoveSan) {
-    // Helper to convert SAN to full piece name and location
-    function sanToText(san) {
-      if (!san) return '';
-      const pieceMap = { K: 'King', Q: 'Queen', R: 'Rook', B: 'Bishop', N: 'Knight' };
-      let match = san.match(/([KQRBN])?([a-h]?[1-8]?)x?([a-h][1-8])(=?[QRBN])?(\+|#)?/);
-      if (!match) return san;
-      let piece = match[1] ? pieceMap[match[1]] : 'Pawn';
-      let to = match[3];
-      let capture = san.includes('x');
-      let promo = match[4] ? ' promoting to ' + pieceMap[match[4].replace('=','')] : '';
-      let check = san.includes('+') ? ' with check' : '';
-      let mate = san.includes('#') ? ' with mate' : '';
-      return `${piece} to ${to}${capture ? ' capturing' : ''}${promo}${check}${mate}`;
-    }
+  static parseSan(san) {
+    if (!san) return { piece: 'piece', to: '', capture: false };
+    const pieceMap = { K: 'King', Q: 'Queen', R: 'Rook', B: 'Bishop', N: 'Knight' };
+    let match = san.match(/([KQRBN])?([a-h]?[1-8]?)x?([a-h][1-8])(=?[QRBN])?([+#])?/);
+    let piece = match && match[1] ? pieceMap[match[1]] : 'Pawn';
+    let to = match && match[3] ? match[3] : '';
+    let capture = san && san.includes('x');
+    return { piece, to, capture };
+  }
 
-    // General, non-spoiler description
-    let description = '';
-    switch (theme) {
-      case 'mate':
-        description = 'A checkmate is possible in this position. Can you find the winning sequence?';
-        break;
-      case 'winning_combination':
-        description = 'There is a combination here that leads to a decisive advantage.';
-        break;
-      case 'tactical_advantage':
-        description = 'A tactical opportunity has arisen—look for a way to gain material.';
-        break;
-      case 'positional_advantage':
-        description = 'A better move is available to improve your position.';
-        break;
-      case 'tactical_opportunity':
-        description = 'There is a tactical chance in this position.';
-        break;
-      default:
-        description = 'There is an opportunity in this position.';
-    }
-    if (lastMove) {
-      description += ` The last move played was ${sanToText(lastMove)}.`;
-    }
+  /**
+   * Helper: Determine game phase from move number
+   */
+  static getGamePhase(moveNumber) {
+    if (moveNumber < 10) return 'early game';
+    if (moveNumber < 30) return 'middlegame';
+    return 'endgame';
+  }
 
-    // Vague, non-spoiler clue for home page
-    function vagueClue(san) {
-      if (!san) return '';
-      const pieceMap = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight' };
-      let match = san.match(/([KQRBN])?([a-h]?[1-8]?)x?([a-h][1-8])(=?[QRBN])?(\+|#)?/);
-      let piece = match && match[1] ? pieceMap[match[1]] : 'pawn';
-      let to = match && match[3] ? match[3] : '';
-      let capture = san.includes('x');
-      let promo = match && match[4] ? match[4].replace('=','') : '';
-      let check = san.includes('+');
-      let mate = san.includes('#');
-      // Underpromotion
-      let promoPiece = promo ? pieceMap[promo] || promo : null;
-      // Build witty, context-aware clues
-      if (mate) return "Checkmate is in the air—can you spot the final blow?";
-      if (check) return "A check could shake things up—look for a bold move.";
-      if (promoPiece && promoPiece !== 'queen') return `A rare underpromotion to a ${promoPiece} might surprise your opponent.`;
-      if (promoPiece && promoPiece === 'queen') return `A pawn's dream: promotion to a queen is within reach.`;
-      switch (piece) {
-        case 'bishop':
-          return to ? `The bishop's diagonal gaze is never innocent—what's happening on ${to}?` : "The bishop's diagonal gaze is never innocent.";
-        case 'knight':
-          return to ? `That knight is itching for mischief on ${to}.` : 'That knight is itching for mischief.';
-        case 'rook':
-          return to ? `Rooks love open roads—can you clear the way to ${to}?` : 'Rooks love open roads—can you clear the way?';
-        case 'queen':
-          return to ? `The queen is plotting—her eyes are on ${to}.` : 'The queen is plotting—can you see her plan?';
-        case 'king':
-          return to ? `Kings may look safe, but looks can be deceiving—especially near ${to}.` : 'Kings may look safe, but looks can be deceiving.';
-        case 'pawn':
-          if (capture && to) return `A humble pawn could stir up trouble by capturing on ${to}.`;
-          if (to) return `A pawn push to ${to} could change the game.`;
-          return 'A pawn push could stir up trouble.';
-        default:
-          return 'Something sneaky is brewing on the board.';
-      }
-    }
+  /**
+   * Enhanced explanation and clue generator
+   */
+  static generateDynamicExplanation(puzzle) {
+    const player = puzzle.gameContext.player === 'w' ? 'White' : 'Black';
+    const lastMove = PuzzleGenerator.parseSan(puzzle.lastMove);
+    const firstSolutionMove = PuzzleGenerator.parseSan(puzzle.solution.moves[0]);
+    const phase = PuzzleGenerator.getGamePhase(puzzle.gameContext.moveNumber);
 
-    // More detailed clue for puzzle solving screen
-    function detailedClue(san) {
-      if (!san) return vagueClue(san);
-      const pieceMap = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight' };
-      let match = san.match(/([KQRBN])?([a-h]?[1-8]?)x?([a-h][1-8])(=?[QRBN])?(\+|#)?/);
-      let piece = match && match[1] ? pieceMap[match[1]] : 'pawn';
-      let to = match && match[3] ? match[3] : '';
-      let capture = san.includes('x');
-      let check = san.includes('+');
-      let mate = san.includes('#');
-      let clue = '';
-      switch (piece) {
-        case 'bishop':
-          clue = 'Look for a bishop move that could change the game.';
-          break;
-        case 'knight':
-          clue = 'A knight jump could be very powerful here.';
-          break;
-        case 'rook':
-          clue = 'The rook can be decisive on an open file.';
-          break;
-        case 'queen':
-          clue = 'The queen has a strong move available.';
-          break;
-        case 'king':
-          clue = 'King safety is a factor—watch for checks.';
-          break;
-        case 'pawn':
-          clue = 'A pawn push could open things up.';
-          break;
-        default:
-          clue = 'There is a tactical idea here.';
-      }
-      if (capture) clue += ' There may be a capture.';
-      if (check) clue += ' A check is possible.';
-      if (mate) clue += ' There could be mate!';
-      return clue;
-    }
+    // Description templates
+    const descTemplates = [
+      `${player}'s ${lastMove.piece} was just ${lastMove.capture ? 'captured' : 'moved'} in the ${phase}. The position has shifted, and both sides are looking for chances.`,
+      `After ${player.toLowerCase()}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was captured' : 'moved'}, the ${phase} continues with tension on the board.`,
+      `It's the ${phase}, and ${player.toLowerCase()}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'has just been taken' : 'has just moved'}. The balance of power is changing.`,
+      `A recent ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'capture' : 'move'} by ${player.toLowerCase()} has changed the landscape. The next moves will be critical.`,
+      `The ${phase} is heating up after ${player.toLowerCase()}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was lost' : 'shifted position'}. The board is full of possibilities.`,
+      `With the ${phase} underway, ${player.toLowerCase()}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'has fallen' : 'has just moved'}. The game is entering a decisive stage.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'disappeared' : 'just moved'} from ${player.toLowerCase()}'s camp. Every piece now matters more than ever.`,
+      `The board has shifted: ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just captured' : 'just moved'}. The ${phase} is in full swing.`,
+      `A key moment in the ${phase}: ${player.toLowerCase()}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'is off the board' : 'has just advanced'}. The tension is rising.`,
+      `The ${phase} brings new chances. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just taken' : 'just made a move'}. The next move could be decisive.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'exchange' : 'maneuver'} has just occurred. The ${phase} is at a crossroads.`,
+      `After a ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'loss' : 'shift'}, the ${phase} is ripe for action. The board is set for a new plan.`,
+      `The ${phase} is full of surprises. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just removed' : 'just made a move'}. The position is dynamic.`,
+      `A sudden ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'capture' : 'move'} by ${player.toLowerCase()} has opened the door for new ideas.`,
+      `The ${phase} is a battlefield—${player.toLowerCase()}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'has fallen' : 'has just moved'}. The struggle continues.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'vanished' : 'shifted'} in the ${phase}. The board is ready for a new plan.`,
+      `With the ${phase} in progress, ${player.toLowerCase()}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'is gone' : 'has just moved'}. The next phase of the game begins.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was just captured' : 'just moved'}—the ${phase} is your stage. The pieces are set for action.`,
+      `The ${phase} just got interesting: ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just lost' : 'just made a move'}. The board is alive with possibilities.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'exchange' : 'advance'} has changed the ${phase}. The next moves will shape the outcome.`,
+      `After ${player.toLowerCase()}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was taken' : 'moved'}, the ${phase} is set for tactics.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'disappeared' : 'just moved'}—the ${phase} is in your hands. The initiative is up for grabs.`,
+      `The ${phase} is a time for boldness. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just captured' : 'just moved'}. The game is on a knife edge.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'loss' : 'move'} by ${player.toLowerCase()} has set the stage for a new battle.`,
+      `The ${phase} is underway. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just lost' : 'just moved'}. The position is ready for a breakthrough.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was just captured' : 'just moved'}—the ${phase} is alive with possibilities.`,
+      `After a ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'exchange' : 'shift'}, the ${phase} is open for tactics.`,
+      `The ${phase} is a moment of truth. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just taken' : 'just moved'}. The next move could decide the game.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'disappeared' : 'just moved'}—the ${phase} is your opportunity to take control.`,
+      `The ${phase} is a time for creativity. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just lost' : 'just moved'}. The board is set for a new idea.`,
+      `A ${lastMove.piece.toLowerCase()} just left the board. In the ${phase}, every piece counts.`,
+      `The ${phase} is a time for surprises. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just captured' : 'just moved'}. The position is shifting.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'loss' : 'move'} by ${player.toLowerCase()} has opened a door for new plans.`,
+      `The ${phase} is shifting. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just lost' : 'just moved'}. The board is ready for a new direction.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was just captured' : 'just moved'}—the ${phase} is a chance for creativity.`,
+      `After a ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'exchange' : 'advance'}, the ${phase} is in flux.`,
+      `The ${phase} is a test of nerves. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just taken' : 'just moved'}.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'disappeared' : 'just moved'}—the ${phase} is a puzzle to solve.`,
+      `The ${phase} is a moment for boldness. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just lost' : 'just moved'}.`,
+      `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was just captured' : 'just moved'}—the ${phase} is your canvas for a new plan.`,
+      `The ${phase} is a crossroads. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just lost' : 'just moved'}. The next move will set the direction.`,
+    ];
+
+    // Clue templates
+    const clueTemplates = [
+      `Win material by using your ${firstSolutionMove.piece.toLowerCase()} at the right moment.`,
+      `Deliver checkmate with a precise move involving your ${firstSolutionMove.piece.toLowerCase()}.`,
+      `Create a decisive threat with your ${firstSolutionMove.piece.toLowerCase()} in this position.`,
+      `Break through the defense by activating your ${firstSolutionMove.piece.toLowerCase()}.`,
+      `Use your ${firstSolutionMove.piece.toLowerCase()} to turn the tables and seize the initiative.`,
+      `Find the tactic that leverages your ${firstSolutionMove.piece.toLowerCase()} for maximum effect.`,
+      `Force a win by coordinating your ${firstSolutionMove.piece.toLowerCase()} with your other pieces.`,
+      `Take control of the game by advancing your ${firstSolutionMove.piece.toLowerCase()}.`,
+      `Punish your opponent's last move with a sharp response from your ${firstSolutionMove.piece.toLowerCase()}.`,
+      `Use your ${firstSolutionMove.piece.toLowerCase()} to expose a weakness in the enemy camp.`,
+      `Find the best continuation with your ${firstSolutionMove.piece.toLowerCase()} to gain the upper hand.`,
+      `Strike quickly with your ${firstSolutionMove.piece.toLowerCase()} to create a winning opportunity.`,
+      `Capitalize on the open lines by bringing your ${firstSolutionMove.piece.toLowerCase()} into play.`,
+      `Your goal: use your ${firstSolutionMove.piece.toLowerCase()} to achieve a decisive advantage.`,
+      `Seize the initiative by making the most of your ${firstSolutionMove.piece.toLowerCase()}.`,
+      `Find the move that puts your ${firstSolutionMove.piece.toLowerCase()} in the spotlight.`,
+      `Use your ${firstSolutionMove.piece.toLowerCase()} to force a concession from your opponent.`,
+      `Take advantage of the position by activating your ${firstSolutionMove.piece.toLowerCase()}.`,
+      `Find the resource that only your ${firstSolutionMove.piece.toLowerCase()} can provide.`,
+      `Make your ${firstSolutionMove.piece.toLowerCase()} the hero of this puzzle.`,
+      `Look for a way to use your ${firstSolutionMove.piece.toLowerCase()} to change the course of the game.`,
+      `Find the breakthrough with your ${firstSolutionMove.piece.toLowerCase()} and press your advantage.`,
+      `Use your ${firstSolutionMove.piece.toLowerCase()} to create a double threat.`,
+      `Find the forcing sequence that starts with your ${firstSolutionMove.piece.toLowerCase()}.`,
+      `Your task: use your ${firstSolutionMove.piece.toLowerCase()} to solve the puzzle.`,
+      `Can you spot the tactic with your ${firstSolutionMove.piece.toLowerCase()}?`,
+      `What is the most powerful move for your ${firstSolutionMove.piece.toLowerCase()} in this position?`,
+      `Is there a way for your ${firstSolutionMove.piece.toLowerCase()} to tip the balance?`,
+      `How can your ${firstSolutionMove.piece.toLowerCase()} make the difference here?`,
+      `What is the best way to use your ${firstSolutionMove.piece.toLowerCase()} to win?`,
+      `Unleash the power of your ${firstSolutionMove.piece.toLowerCase()} to shift the balance in your favor.`,
+      `Find the sequence that forces your opponent to give up material using your ${firstSolutionMove.piece.toLowerCase()}.`,
+      `Use your ${firstSolutionMove.piece.toLowerCase()} to create unstoppable threats.`,
+      `Coordinate your ${firstSolutionMove.piece.toLowerCase()} with your other pieces to dominate the board.`,
+      `Spot the weakness and exploit it with your ${firstSolutionMove.piece.toLowerCase()}.`,
+      `Can your ${firstSolutionMove.piece.toLowerCase()} deliver the decisive blow?`,
+      `Is there a way to use your ${firstSolutionMove.piece.toLowerCase()} to force a win?`,
+      `Find the move that turns your ${firstSolutionMove.piece.toLowerCase()} into a game-changer.`,
+      `Let your ${firstSolutionMove.piece.toLowerCase()} lead the attack and open lines.`,
+      `Can you use your ${firstSolutionMove.piece.toLowerCase()} to set up a devastating tactic?`,
+      `Make your ${firstSolutionMove.piece.toLowerCase()} the key to unlocking the position.`,
+    ];
+
+    const description = descTemplates[Math.floor(Math.random() * descTemplates.length)];
+    const clue = clueTemplates[Math.floor(Math.random() * clueTemplates.length)];
+
+    // Optionally, detailed clue
+    const detailedClue = `Pay attention to the ${firstSolutionMove.piece.toLowerCase()} and its potential moves in the ${phase}.`;
 
     return {
       description,
-      clue: vagueClue(bestMoveSan),
-      detailedClue: detailedClue(bestMoveSan)
+      clue,
+      detailedClue
     };
+  }
+
+  /**
+   * Generate explanation and clue for the puzzle
+   */
+  generateExplanation(analysis, theme, position, lastMove, puzzleMoveNumber, playerColor, bestMoveSan, puzzleObj) {
+    // Use the new dynamic explanation generator
+    return PuzzleGenerator.generateDynamicExplanation(puzzleObj);
   }
 
   /**
