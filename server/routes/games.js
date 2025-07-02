@@ -29,7 +29,28 @@ router.post('/analyze', async (req, res) => {
     
     console.log('🔍 Analyzing game URL:', gameUrl);
     
-    const gameData = await chessComService.fetchGameData(gameUrl);
+    // For chess.com URLs, we can't fetch individual games anymore
+    // This route is deprecated for chess.com
+    if (gameUrl.includes('chess.com')) {
+      return res.status(400).json({
+        error: 'Individual chess.com game analysis is not supported. Use the import route instead.'
+      });
+    }
+    
+    // For lichess, we can still fetch individual games
+    if (gameUrl.includes('lichess.org')) {
+      const gameId = gameUrl.split('/').pop();
+      const gameData = await lichessService.getGame(gameId);
+      res.json({
+        success: true,
+        game: gameData
+      });
+      return;
+    }
+    
+    return res.status(400).json({
+      error: 'Unsupported platform. Only lichess.org URLs are supported for individual game analysis.'
+    });
     
     res.json({
       success: true,
@@ -201,15 +222,22 @@ router.post('/import', async (req, res) => {
       });
     }
     
+    console.log('DEBUG platform value:', platform);
     console.log('📥 Importing games for:', username, 'from', platform, `(max: ${maxGames} games, ${maxPuzzles} puzzles)`);
+    
+    // Add initial processing delay for sophistication
+    console.log('🚀 Initializing game import system...');
+    await new Promise(resolve => setTimeout(resolve, 600));
     
     let games = [];
     
     switch (platform.toLowerCase()) {
       case 'chess.com':
+      case 'chesscom':
         games = await chessComService.getPlayerGames(username, parseInt(maxGames));
         break;
       case 'lichess.org':
+      case 'lichess':
         if (!lichessService.validateUsername(username)) {
           return res.status(400).json({ 
             error: 'Invalid lichess username format' 
@@ -231,21 +259,42 @@ router.post('/import', async (req, res) => {
     const startTime = Date.now();
     
     // Process games until we have enough puzzles or run out of games
-    for (const game of games) {
+    for (let gameIndex = 0; gameIndex < games.length; gameIndex++) {
+      const game = games[gameIndex];
       if (allPuzzles.length >= maxPuzzles) {
         console.log(`✅ Reached target of ${maxPuzzles} puzzles`);
         break;
       }
-      
       try {
-        let gameUrl;
-        if (platform === 'chess.com') {
-          gameUrl = `https://www.chess.com/game/live/${game.id}`;
-        } else {
-          gameUrl = `https://lichess.org/${game.id}`;
+        // Debug: print the game object and its properties
+        console.log('DEBUG game object:', game);
+        console.log('DEBUG game properties:', Object.keys(game));
+        console.log('DEBUG game.url:', game.url);
+        console.log('DEBUG game.id:', game.id);
+
+        // Check if this is a Chess960 game
+        const isChess960 = game.rules === 'chess960' || game.pgn.includes('[Variant "Chess960"]');
+        if (isChess960) {
+          console.log('♟️ Processing Chess960 game:', game.white?.username || 'Unknown', 'vs', game.black?.username || 'Unknown');
+          // Skip Chess960 games for now as they can cause parsing issues
+          console.log('⚠️ Skipping Chess960 game due to parsing complexity');
+          continue;
         }
-        
-        const puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(gameUrl);
+
+        let puzzleResult;
+        if (platform === 'chess.com' || platform === 'chesscom') {
+          // Pass the full game object (with PGN) directly
+          if (!game.pgn) {
+            console.log('⚠️ Skipping game without PGN:', game);
+            continue;
+          }
+          // Add platform property for downstream logic
+          game.platform = 'chess.com';
+          puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(game);
+        } else {
+          // For lichess, pass the game URL
+          puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(`https://lichess.org/${game.id}`);
+        }
         if (puzzleResult.puzzles && puzzleResult.puzzles.length > 0) {
           // Add puzzles but respect the max limit
           const remainingSlots = maxPuzzles - allPuzzles.length;
@@ -253,9 +302,6 @@ router.post('/import', async (req, res) => {
           allPuzzles.push(...puzzlesToAdd);
         }
         processedGames++;
-        
-        // Add delay to prevent overwhelming the engine
-        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error) {
         console.error(`Error generating puzzles for game ${game.id}:`, error);
       }

@@ -52,39 +52,10 @@ class ChessComService {
 
   /**
    * Fetch game data from chess.com
+   * (DEPRECATED: No longer used, use PGN from game object instead)
    */
   async fetchGameData(url) {
-    try {
-      const { gameType, gameId } = this.parseChessComUrl(url);
-      
-      // Fetch game data using chess.com API
-      const response = await axios.get(`${this.baseUrl}/game/${gameId}`);
-      const gameData = response.data;
-      
-      if (!gameData || !gameData.pgn) {
-        throw new Error('Game not found or no PGN data available');
-      }
-
-      // Parse PGN to get additional game information
-      const chess = new Chess();
-      chess.loadPgn(gameData.pgn);
-
-      return {
-        id: gameId,
-        type: gameType,
-        pgn: gameData.pgn,
-        white: gameData.white || chess.header('White'),
-        black: gameData.black || chess.header('Black'),
-        result: chess.header('Result'),
-        date: chess.header('Date'),
-        timeControl: gameData.time_class,
-        moves: chess.history(),
-        fen: chess.fen()
-      };
-    } catch (error) {
-      console.error('Error fetching game data:', error);
-      throw new Error(`Failed to fetch game data: ${error.message}`);
-    }
+    throw new Error('fetchGameData is deprecated. Use PGN from the game object.');
   }
 
   /**

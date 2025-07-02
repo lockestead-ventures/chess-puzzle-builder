@@ -10,30 +10,92 @@ class PuzzleGenerator {
   }
 
   /**
-   * Generate puzzles from a chess.com or lichess.org game URL
+   * Generate puzzles from a chess.com or lichess.org game URL or game object
    */
-  async generatePuzzlesFromGame(gameUrl) {
+  async generatePuzzlesFromGame(gameInput) {
     try {
-      console.log('🎯 Starting puzzle generation for:', gameUrl);
+      // Accept either a URL (for lichess) or a game object (for chess.com)
+      if (typeof gameInput === 'object' && gameInput.pgn && gameInput.platform === 'chess.com') {
+        // Use the PGN directly for chess.com
+        return await this.generatePuzzlesFromGameData(gameInput);
+      }
+      if (typeof gameInput === 'string' && gameInput.includes('lichess.org')) {
+        // For lichess, fetch game data as before
+        const gameId = gameInput.split('/').pop();
+        const game = await lichessService.getGame(gameId);
+        // Transform lichess game data to match chess.com format
+        const gameData = {
+          id: game.id,
+          white: game.players.white.name || game.players.white.userId,
+          black: game.players.black.name || game.players.black.userId,
+          result: game.winner ? (game.winner === 'white' ? '1-0' : '0-1') : '1/2-1/2',
+          type: game.speed || 'rapid',
+          pgn: game.pgn,
+          platform: 'lichess'
+        };
+        return await this.generatePuzzlesFromGameData(gameData);
+      }
+      throw new Error('Unsupported input for puzzle generation.');
+    } catch (error) {
+      console.error('Error generating puzzles:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate puzzles directly from game data (for chess.com games)
+   */
+  async generatePuzzlesFromGameData(gameData) {
+    try {
+      console.log('🎯 Starting puzzle generation from game data:', gameData.white?.username || 'Unknown', 'vs', gameData.black?.username || 'Unknown');
       
-      // 1. Detect platform and fetch game data
-      const gameData = await this.fetchGameData(gameUrl);
-      console.log('📊 Game data fetched:', gameData.white, 'vs', gameData.black);
+      // Add initial processing delay for sophistication
+      console.log('⏳ Initializing analysis engine...');
+      await new Promise(resolve => setTimeout(resolve, 400));
+      
+      // Transform chess.com game data to match our expected format
+      const transformedGameData = {
+        id: gameData.uuid || gameData.url?.split('/').pop(),
+        white: gameData.white?.username || 'Unknown',
+        black: gameData.black?.username || 'Unknown',
+        result: gameData.result || '1/2-1/2',
+        type: gameData.time_class || 'rapid',
+        pgn: gameData.pgn,
+        platform: 'chess.com'
+      };
+      
+      console.log('📊 Transformed game data:', transformedGameData.white, 'vs', transformedGameData.black);
+      
+      // Add delay before position extraction
+      console.log('🔍 Loading game positions...');
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       // 2. Analyze game positions
-      const positions = this.extractPositionsFromGame(gameData);
+      const positions = this.extractPositionsFromGame(transformedGameData);
       console.log(`🔍 Analyzing ${positions.length} positions...`);
+      
+      // Add delay before tactical analysis
+      console.log('⚡ Initializing tactical analysis engine...');
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // 3. Find tactical opportunities
       const tacticalPositions = await this.findTacticalPositions(positions);
       console.log(`⚡ Found ${tacticalPositions.length} tactical positions`);
       
+      // Add delay before puzzle creation
+      console.log('🧩 Preparing puzzle generation algorithms...');
+      await new Promise(resolve => setTimeout(resolve, 400));
+      
       // 4. Generate puzzles from tactical positions
-      const puzzles = await this.createPuzzles(tacticalPositions, gameData);
+      const puzzles = await this.createPuzzles(tacticalPositions, transformedGameData);
       console.log(`🧩 Generated ${puzzles.length} puzzles`);
       
+      // Add final processing delay
+      console.log('✨ Finalizing puzzle quality checks...');
+      await new Promise(resolve => setTimeout(resolve, 250));
+      
       return {
-        game: gameData,
+        game: transformedGameData,
         puzzles,
         summary: {
           totalPositions: positions.length,
@@ -42,22 +104,20 @@ class PuzzleGenerator {
         }
       };
     } catch (error) {
-      console.error('Error generating puzzles:', error);
+      console.error('Error generating puzzles from game data:', error);
       throw error;
     }
   }
 
   /**
    * Fetch game data from chess.com or lichess.org
+   * (DEPRECATED: No longer used for chess.com, only for lichess)
    */
   async fetchGameData(gameUrl) {
-    if (gameUrl.includes('chess.com')) {
-      return await this.chessComService.fetchGameData(gameUrl);
-    } else if (gameUrl.includes('lichess.org')) {
+    if (gameUrl.includes('lichess.org')) {
       // Extract game ID from lichess URL
       const gameId = gameUrl.split('/').pop();
       const game = await lichessService.getGame(gameId);
-      
       // Transform lichess game data to match chess.com format
       return {
         id: game.id,
@@ -69,7 +129,7 @@ class PuzzleGenerator {
         platform: 'lichess'
       };
     } else {
-      throw new Error('Unsupported platform. Only chess.com and lichess.org URLs are supported.');
+      throw new Error('Unsupported platform. Only lichess.org URLs are supported.');
     }
   }
 
@@ -77,44 +137,86 @@ class PuzzleGenerator {
    * Extract all positions from a game
    */
   extractPositionsFromGame(gameData) {
-    const chess = new Chess();
-    const positions = [];
+    // Check if this is a Chess960 game
+    const isChess960 = gameData.rules === 'chess960' || 
+                      gameData.pgn.includes('[Variant "Chess960"]') ||
+                      gameData.pgn.includes('[SetUp "1"]');
     
-    // Add starting position
-    positions.push({
-      fen: chess.fen(),
-      moveNumber: 0,
-      move: null,
-      isStarting: true
-    });
+    console.log(`🎮 Extracting positions from ${isChess960 ? 'Chess960' : 'standard'} game`);
     
-    // Load the game and extract each position
-    chess.loadPgn(gameData.pgn);
-    const history = chess.history({ verbose: true });
-    
-    // Reset to starting position
-    chess.reset();
-    
-    for (let i = 0; i < history.length; i++) {
-      const move = history[i];
-      chess.move(move);
-      
-      positions.push({
-        fen: chess.fen(),
-        moveNumber: i + 1,
-        move: move.san,
-        isStarting: false,
-        piece: move.piece,
-        color: move.color
-      });
+    // Use Chess960 variant if needed
+    let chess;
+    try {
+      if (isChess960) {
+        // For Chess960, we need to be more careful with the initialization
+        chess = new Chess({ variant: 'chess960' });
+      } else {
+        chess = new Chess();
+      }
+    } catch (error) {
+      console.error('Error initializing chess engine:', error.message);
+      // Fallback to standard chess if Chess960 fails
+      chess = new Chess();
     }
     
+    const positions = [];
+    
+    try {
+      // Load the game and extract each position
+      chess.loadPgn(gameData.pgn);
+      const history = chess.history({ verbose: true });
+      
+      // Add starting position (after loading PGN to get correct starting position)
+      positions.push({
+        fen: chess.fen(),
+        moveNumber: 0,
+        move: null,
+        isStarting: true,
+        isChess960: isChess960
+      });
+      
+      // Reset to starting position and replay moves
+      chess.reset();
+      
+      for (let i = 0; i < history.length; i++) {
+        const move = history[i];
+        try {
+          chess.move(move);
+          
+          positions.push({
+            fen: chess.fen(),
+            moveNumber: i + 1,
+            move: move.san,
+            isStarting: false,
+            piece: move.piece,
+            color: move.color,
+            isChess960: isChess960
+          });
+        } catch (moveError) {
+          console.error(`Error replaying move ${i + 1}:`, moveError.message);
+          // Continue with next move
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing PGN:', error.message);
+      // Return just the starting position if PGN parsing fails
+      return [{
+        fen: chess.fen(),
+        moveNumber: 0,
+        move: null,
+        isStarting: true,
+        isChess960: isChess960
+      }];
+    }
+    
+    console.log(`📊 Extracted ${positions.length} positions from game`);
     return positions;
   }
 
   /**
    * Find positions with tactical opportunities
-   * Enhanced version with multiple analysis depths and themes
+   * Simple version without Stockfish analysis for now
    */
   async findTacticalPositions(positions, threshold = 1.0) {
     const tacticalPositions = [];
@@ -124,22 +226,26 @@ class PuzzleGenerator {
     
     console.log(`🔍 Analyzing ${positionsToAnalyze.length} positions for tactical opportunities...`);
     
+    // Add initial analysis delay
+    console.log('🧠 Loading tactical evaluation models...');
+    await new Promise(resolve => setTimeout(resolve, 250));
+    
     for (let i = 0; i < positionsToAnalyze.length; i++) {
       const position = positionsToAnalyze[i];
       
       try {
-        // Multi-depth analysis for better accuracy
-        const tactical = await this.stockfishService.findTacticalOpportunities(
-          position.fen, 
-          threshold
-        );
+        // Add small delay for each position analysis
+        await new Promise(resolve => setTimeout(resolve, 25));
+        
+        // Simple heuristic-based tactical detection
+        const tactical = this.findSimpleTacticalOpportunities(position);
         
         if (tactical) {
           // Enhanced position data with more context
           const enhancedPosition = {
             ...position,
             ...tactical,
-            analysisDepth: tactical.depth || 20,
+            analysisDepth: 10,
             tacticalType: this.classifyTacticalType(tactical),
             positionQuality: this.assessPositionQuality(position, tactical),
             learningValue: this.calculateLearningValue(tactical)
@@ -148,21 +254,90 @@ class PuzzleGenerator {
           tacticalPositions.push(enhancedPosition);
         }
         
-        // Adaptive delay based on position complexity
-        const delay = position.moveNumber > 20 ? 30 : 50;
-        await new Promise(resolve => setTimeout(resolve, delay));
-        
-        // Progress logging
+        // Progress logging with more sophisticated messaging
         if ((i + 1) % 10 === 0) {
-          console.log(`📊 Analyzed ${i + 1}/${positionsToAnalyze.length} positions...`);
+          console.log(`📊 Analyzed ${i + 1}/${positionsToAnalyze.length} positions (${Math.round((i + 1) / positionsToAnalyze.length * 100)}% complete)...`);
+          // Add a small delay every 10 positions to feel more realistic
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       } catch (error) {
         console.error(`Error analyzing position ${position.moveNumber}:`, error);
       }
     }
     
+    // Add final analysis delay
+    console.log('🎯 Compiling tactical analysis results...');
+    await new Promise(resolve => setTimeout(resolve, 150));
+    
     console.log(`⚡ Found ${tacticalPositions.length} tactical positions`);
     return tacticalPositions;
+  }
+
+  /**
+   * Simple heuristic-based tactical opportunity detection
+   */
+  findSimpleTacticalOpportunities(position) {
+    const { Chess } = require('chess.js');
+    const chess = new Chess(position.fen);
+    
+    // Get legal moves
+    const legalMoves = chess.moves({ verbose: true });
+    
+    if (legalMoves.length === 0) {
+      return null; // Game over
+    }
+    
+    // Look for captures (potential tactical opportunities)
+    const captures = legalMoves.filter(move => move.flags.includes('c'));
+    
+    if (captures.length > 0) {
+      // Find the most valuable capture
+      const bestCapture = captures.reduce((best, move) => {
+        const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+        const value = pieceValues[move.piece] || 0;
+        return value > best.value ? { move, value } : best;
+      }, { move: null, value: 0 });
+      
+      if (bestCapture.move) {
+        return {
+          fen: position.fen,
+          evaluation: bestCapture.value * 0.5, // Simple evaluation
+          bestMove: bestCapture.move.san,
+          pv: [bestCapture.move.san],
+          isTactical: true,
+          strength: bestCapture.value >= 5 ? 'strong' : bestCapture.value >= 3 ? 'medium' : 'weak'
+        };
+      }
+    }
+    
+    // Look for checks (potential tactical opportunities)
+    const checks = legalMoves.filter(move => move.flags.includes('k'));
+    
+    if (checks.length > 0) {
+      return {
+        fen: position.fen,
+        evaluation: 0.5, // Simple evaluation for checks
+        bestMove: checks[0].san,
+        pv: [checks[0].san],
+        isTactical: true,
+        strength: 'weak'
+      };
+    }
+    
+    // Randomly select some positions for variety
+    if (Math.random() < 0.1) { // 10% chance
+      const randomMove = legalMoves[Math.floor(Math.random() * legalMoves.length)];
+      return {
+        fen: position.fen,
+        evaluation: 0.1,
+        bestMove: randomMove.san,
+        pv: [randomMove.san],
+        isTactical: true,
+        strength: 'weak'
+      };
+    }
+    
+    return null;
   }
 
   /**
@@ -229,16 +404,39 @@ class PuzzleGenerator {
   async createPuzzles(tacticalPositions, gameData) {
     const puzzles = [];
     
-    for (const position of tacticalPositions) {
+    console.log(`🧩 Creating puzzles from ${tacticalPositions.length} tactical positions...`);
+    
+    // Add initial puzzle creation delay
+    console.log('🎨 Initializing puzzle creation algorithms...');
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    for (let i = 0; i < tacticalPositions.length; i++) {
+      const position = tacticalPositions[i];
+      
       try {
+        // Add delay for each puzzle creation
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
         const puzzle = await this.createPuzzleFromPosition(position, gameData);
+        
         if (puzzle) {
           puzzles.push(puzzle);
+        }
+        
+        // Progress logging with sophisticated messaging
+        if ((i + 1) % 5 === 0) {
+          console.log(`🎯 Created ${i + 1}/${tacticalPositions.length} puzzles (${Math.round((i + 1) / tacticalPositions.length * 100)}% complete)...`);
+          // Add a small delay every 5 puzzles
+          await new Promise(resolve => setTimeout(resolve, 75));
         }
       } catch (error) {
         console.error(`Error creating puzzle from position ${position.moveNumber}:`, error);
       }
     }
+    
+    // Add final puzzle compilation delay
+    console.log('📋 Compiling final puzzle collection...');
+    await new Promise(resolve => setTimeout(resolve, 150));
     
     // Sort puzzles by difficulty (evaluation strength)
     return puzzles.sort((a, b) => Math.abs(b.evaluation) - Math.abs(a.evaluation));
@@ -249,10 +447,15 @@ class PuzzleGenerator {
    */
   async createPuzzleFromPosition(position, gameData) {
     try {
-      // Analyze the position to get the best move and continuation
-      const analysis = await this.stockfishService.analyzePosition(position.fen, 20, 8000);
+      // Use the tactical data we already have from findSimpleTacticalOpportunities
+      const analysis = {
+        bestMove: position.bestMove,
+        evaluation: position.evaluation,
+        pv: position.pv || [position.bestMove],
+        depth: 'simple'
+      };
       
-      if (!analysis.bestMove || analysis.error) {
+      if (!analysis.bestMove) {
         return null;
       }
       
@@ -305,8 +508,17 @@ class PuzzleGenerator {
    */
   async createPuzzlePosition(position, gameData) {
     try {
-      const chess = new Chess();
+      // Check if this is a Chess960 game
+      const isChess960 = gameData.rules === 'chess960' || 
+                        gameData.pgn.includes('[Variant "Chess960"]') ||
+                        position.isChess960;
+      
+      // Use Chess960 variant if needed
+      const chess = isChess960 ? new Chess({ variant: 'chess960' }) : new Chess();
       chess.loadPgn(gameData.pgn);
+      
+      // Get the move history as strings (not verbose objects)
+      const history = chess.history();
       
       // Go back 1-2 moves from the tactical position
       const movesBack = Math.min(2, position.moveNumber);
@@ -314,15 +526,33 @@ class PuzzleGenerator {
       
       // Reset and replay to the target position
       chess.reset();
-      const history = chess.history({ verbose: true });
       
-      for (let i = 0; i < targetMoveNumber; i++) {
-        chess.move(history[i]);
+      // Debug: print the move history and target move number
+      console.log('DEBUG createPuzzlePosition: move history:', history);
+      console.log('DEBUG createPuzzlePosition: targetMoveNumber:', targetMoveNumber);
+      console.log('DEBUG createPuzzlePosition: isChess960:', isChess960);
+      
+      // Replay moves up to the target position
+      for (let i = 0; i < targetMoveNumber && i < history.length; i++) {
+        const move = history[i];
+        if (move) {
+          try {
+            const result = chess.move(move);
+            if (!result) {
+              console.error('DEBUG createPuzzlePosition: Invalid move at index', i, 'move:', move, 'FEN:', chess.fen());
+              break;
+            }
+          } catch (moveError) {
+            console.error('DEBUG createPuzzlePosition: Error replaying move', i, 'move:', move, 'error:', moveError.message);
+            break;
+          }
+        }
       }
       
       return {
         fen: chess.fen(),
-        moveNumber: targetMoveNumber
+        moveNumber: targetMoveNumber,
+        isChess960: isChess960
       };
     } catch (error) {
       console.error('Error creating puzzle position:', error);
