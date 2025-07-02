@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
-import { ArrowLeft, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, Target } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, Target, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const PuzzleSolver = () => {
   const { puzzleId } = useParams();
@@ -14,34 +14,51 @@ const PuzzleSolver = () => {
   const [isCorrect, setIsCorrect] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [showHint, setShowHint] = useState(false);
+  const [starRating, setStarRating] = useState(null);
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [moveNavIndex, setMoveNavIndex] = useState(0);
+  const [selectedSquare, setSelectedSquare] = useState(null);
+  const [movePreviews, setMovePreviews] = useState([]);
+  const [showPlayedModal, setShowPlayedModal] = useState(false);
+  const [playedDemoFen, setPlayedDemoFen] = useState(null);
+  const [isAnimatingPlayedMove, setIsAnimatingPlayedMove] = useState(false);
 
   useEffect(() => {
     loadPuzzle();
   }, [puzzleId]);
 
-  const loadPuzzle = async () => {
-    try {
-      // For now, we'll use a mock puzzle since we don't have a database
-      // In a real implementation, this would fetch from the API
-      const mockPuzzle = {
-        id: puzzleId,
-        position: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-        solution: {
-          moves: ['e4', 'e5', 'Nf3'],
-          evaluation: 0.5
-        },
-        theme: 'tactical_opportunity',
-        difficulty: 3,
-        explanation: 'This is a sample puzzle. Find the best move to gain an advantage.',
-        gameContext: {
-          moveNumber: 10,
-          originalMove: 'Nf3',
-          player: 'white'
-        }
-      };
+  useEffect(() => {
+    // If there is a last move, start at moveNavIndex 1 (after the last move is played)
+    if (puzzle && puzzle.solution && puzzle.solution.moves && puzzle.solution.moves.length > 0) {
+      setMoveNavIndex(1);
+    } else {
+      setMoveNavIndex(0);
+    }
+  }, [puzzleId, puzzle]);
 
-      setPuzzle(mockPuzzle);
-      const newChess = new Chess(mockPuzzle.position);
+  useEffect(() => {
+    if (!selectedSquare || !chess) {
+      setMovePreviews([]);
+      return;
+    }
+    const tempChess = new Chess(getBoardFenAtMove(moveNavIndex));
+    const moves = tempChess.moves({ square: selectedSquare, verbose: true });
+    setMovePreviews(moves);
+  }, [selectedSquare, chess, moveNavIndex, puzzle]);
+
+  const loadPuzzle = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch the real puzzle from the backend
+      const response = await fetch(`/api/puzzles/${puzzleId}`);
+      if (!response.ok) throw new Error('Failed to load puzzle');
+      const data = await response.json();
+      if (!data.success || !data.puzzle) throw new Error('Puzzle not found');
+      setPuzzle(data.puzzle);
+      const newChess = new Chess(data.puzzle.position);
       setChess(newChess);
       setLoading(false);
     } catch (err) {
@@ -68,21 +85,31 @@ const PuzzleSolver = () => {
       if (move.san === correctMove) {
         setIsCorrect(true);
         setCurrentMoveIndex(currentMoveIndex + 1);
-        
-        // Check if puzzle is complete
+        setFailedAttempts(0);
+        setShowHint(false);
         if (currentMoveIndex + 1 >= puzzle.solution.moves.length) {
-          // Puzzle solved!
+          // Puzzle solved! Grade performance
+          let stars = 3;
+          if (showSolution) {
+            stars = 0;
+          } else if (showHint || failedAttempts >= 3) {
+            stars = 1;
+          } else if (failedAttempts >= 1) {
+            stars = 2;
+          }
+          setStarRating(stars);
           setTimeout(() => {
-            alert('Congratulations! You solved the puzzle!');
+            setShowRatingModal(true);
           }, 500);
         }
       } else {
         setIsCorrect(false);
+        setFailedAttempts(failedAttempts + 1);
         setTimeout(() => {
           setIsCorrect(null);
         }, 2000);
       }
-
+      setShowHint(false); // Hide hint after any move
       return true;
     } catch (error) {
       return false;
@@ -96,16 +123,158 @@ const PuzzleSolver = () => {
     setCurrentMoveIndex(0);
     setIsCorrect(null);
     setShowSolution(false);
+    setFailedAttempts(0);
+    setShowHint(false);
+    setStarRating(null);
+    setShowRatingModal(false);
   };
 
-  const showHint = () => {
-    const correctMove = puzzle.solution.moves[currentMoveIndex];
-    alert(`Hint: The correct move is ${correctMove}`);
+  const handleShowHint = () => {
+    setShowHint(true);
   };
 
   const getBoardOrientation = () => {
     return puzzle?.gameContext?.player === 'black' ? 'black' : 'white';
   };
+
+  // Highlight the piece to move for the next correct move
+  let customSquareStyles = {};
+  // Highlight for hint
+  if (showHint && puzzle && chess) {
+    const correctMove = puzzle.solution.moves[currentMoveIndex];
+    if (correctMove) {
+      try {
+        const tempChess = new Chess(chess.fen());
+        const moveObj = tempChess.move(correctMove, { sloppy: true });
+        if (moveObj && moveObj.from) {
+          customSquareStyles[moveObj.from] = {
+            boxShadow: '0 0 0 4px #facc15, 0 0 10px 4px #fde68a',
+            background: '#fef9c3',
+          };
+        }
+      } catch (e) {}
+    }
+  }
+  // Highlight for move preview
+  if (selectedSquare && movePreviews.length > 0) {
+    customSquareStyles[selectedSquare] = {
+      boxShadow: '0 0 0 4px #fde047',
+      background: '#fef9c3',
+    };
+    movePreviews.forEach((move) => {
+      if (move.captured) {
+        customSquareStyles[move.to] = {
+          boxShadow: '0 0 0 4px #f87171',
+          background: '#fee2e2',
+        };
+      } else {
+        customSquareStyles[move.to] = {
+          boxShadow: '0 0 0 4px #fde047',
+          background: '#fef9c3',
+        };
+      }
+    });
+  }
+
+  const getBoardFenAtMove = (moveIndex) => {
+    if (!puzzle) return chess.fen();
+    const tempChess = new Chess(puzzle.position);
+    // If moveIndex is 0, show the position before the last move (if available)
+    if (moveIndex === 0) {
+      // If there is a lastMove in puzzle, play all moves except the last one
+      if (puzzle.lastMove && puzzle.moveHistory) {
+        for (let i = 0; i < puzzle.moveHistory.length - 1; i++) {
+          tempChess.move(puzzle.moveHistory[i], { sloppy: true });
+        }
+        return tempChess.fen();
+      }
+      return tempChess.fen();
+    }
+    // Play moves up to moveIndex
+    for (let i = 0; i < moveIndex && i < puzzle.solution.moves.length; i++) {
+      tempChess.move(puzzle.solution.moves[i], { sloppy: true });
+    }
+    return tempChess.fen();
+  };
+
+  const handleNavBack = () => {
+    setMoveNavIndex((prev) => Math.max(0, prev - 1));
+  };
+  const handleNavForward = () => {
+    setMoveNavIndex((prev) => Math.min(puzzle.solution.moves.length, prev + 1));
+  };
+
+  // Handle square click for move preview
+  const handleSquareClick = (square) => {
+    // If a piece is selected and user clicks a legal destination, make the move
+    if (
+      selectedSquare &&
+      movePreviews.length > 0 &&
+      moveNavIndex === currentMoveIndex &&
+      movePreviews.some((m) => m.to === square)
+    ) {
+      onDrop(selectedSquare, square);
+      setSelectedSquare(null);
+      return;
+    }
+    // Otherwise, select/deselect piece as before
+    if (selectedSquare === square) {
+      setSelectedSquare(null);
+    } else {
+      // Only allow selecting your own pieces at the current move index
+      const tempChess = new Chess(getBoardFenAtMove(moveNavIndex));
+      const piece = tempChess.get(square);
+      if (!piece) return;
+      const isWhite = piece.color === 'w';
+      const orientation = getBoardOrientation();
+      if ((orientation === 'white' && isWhite) || (orientation === 'black' && !isWhite)) {
+        setSelectedSquare(square);
+      }
+    }
+  };
+
+  // Clear move preview after a move or navigation
+  useEffect(() => {
+    setSelectedSquare(null);
+  }, [moveNavIndex, currentMoveIndex, chess.fen()]);
+
+  // Sword icon SVG for capture squares
+  const SwordIcon = () => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', top: 2, right: 2, opacity: 0.35, pointerEvents: 'none' }}>
+      <path d="M2 21l1.5-4.5L14 6l4 4L6.5 19.5 2 21z" stroke="#dc2626" strokeWidth="2" fill="#dc2626" fillOpacity="0.25" />
+      <path d="M14 6l4 4" stroke="#dc2626" strokeWidth="2" />
+    </svg>
+  );
+
+  // Helper to get the FEN before the original move (from backend)
+  const getFenBeforeOriginalMove = () => {
+    if (!puzzle || !puzzle.fenBeforeOriginalMove) return getBoardFenAtMove(0);
+    return puzzle.fenBeforeOriginalMove;
+  };
+
+  // Helper to play the original move as an animation
+  const playOriginalMoveDemo = () => {
+    if (!puzzle || !puzzle.gameContext || !puzzle.gameContext.originalMove) return;
+    setPlayedDemoFen(getFenBeforeOriginalMove());
+    setIsAnimatingPlayedMove(true);
+    setTimeout(() => {
+      const tempChess = new Chess(getFenBeforeOriginalMove());
+      tempChess.move(puzzle.gameContext.originalMove);
+      setPlayedDemoFen(tempChess.fen());
+      setIsAnimatingPlayedMove(false);
+    }, 500); // short delay for animation effect
+  };
+
+  // When modal opens, auto-play the move
+  useEffect(() => {
+    if (showPlayedModal) {
+      playOriginalMoveDemo();
+    } else {
+      setPlayedDemoFen(null);
+      setIsAnimatingPlayedMove(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPlayedModal]);
 
   if (loading) {
     return (
@@ -151,20 +320,25 @@ const PuzzleSolver = () => {
             <RotateCcw className="h-4 w-4 mr-2" />
             Reset
           </button>
-          <button
-            onClick={showHint}
-            className="flex items-center px-3 py-2 text-blue-600 hover:text-blue-700 transition-colors"
-          >
-            <Target className="h-4 w-4 mr-2" />
-            Hint
-          </button>
-          <button
-            onClick={() => setShowSolution(!showSolution)}
-            className="flex items-center px-3 py-2 text-purple-600 hover:text-purple-700 transition-colors"
-          >
-            {showSolution ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
-            {showSolution ? 'Hide' : 'Show'} Solution
-          </button>
+          {failedAttempts >= 1 && (
+            <button
+              onClick={handleShowHint}
+              className="flex items-center px-3 py-2 text-yellow-600 hover:text-yellow-700 transition-colors"
+              disabled={showHint}
+            >
+              <Target className="h-4 w-4 mr-2" />
+              {showHint ? 'Hint Shown' : 'Show Hint'}
+            </button>
+          )}
+          {failedAttempts >= 5 && (
+            <button
+              onClick={() => setShowSolution(!showSolution)}
+              className="flex items-center px-3 py-2 text-purple-600 hover:text-purple-700 transition-colors"
+            >
+              {showSolution ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
+              {showSolution ? 'Hide' : 'Show'} Solution
+            </button>
+          )}
         </div>
       </div>
 
@@ -173,16 +347,51 @@ const PuzzleSolver = () => {
         <div className="space-y-4">
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Puzzle Position</h3>
+            {/* Move Navigation */}
+            <div className="flex items-center justify-center mb-2 space-x-2">
+              <button
+                onClick={handleNavBack}
+                disabled={moveNavIndex === 0}
+                className={`p-2 rounded-full border ${moveNavIndex === 0 ? 'bg-gray-100 text-gray-400' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                aria-label="Previous move"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <span className="text-sm text-gray-700">Move {moveNavIndex} / {puzzle ? puzzle.solution.moves.length : 0}</span>
+              <button
+                onClick={handleNavForward}
+                disabled={moveNavIndex === (puzzle ? puzzle.solution.moves.length : 0)}
+                className={`p-2 rounded-full border ${moveNavIndex === (puzzle ? puzzle.solution.moves.length : 0) ? 'bg-gray-100 text-gray-400' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                aria-label="Next move"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
             <div className="chess-board">
-              <Chessboard
-                position={chess.fen()}
-                onPieceDrop={onDrop}
-                boardOrientation={getBoardOrientation()}
-                customBoardStyle={{
-                  borderRadius: '4px',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <Chessboard
+                  position={getBoardFenAtMove(moveNavIndex)}
+                  onPieceDrop={onDrop}
+                  boardOrientation={getBoardOrientation()}
+                  customBoardStyle={{
+                    borderRadius: '4px',
+                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                  }}
+                  customSquareStyles={customSquareStyles}
+                  arePiecesDraggable={moveNavIndex === currentMoveIndex}
+                  onSquareClick={handleSquareClick}
+                  renderCustomSquareContents={(square) => {
+                    // Show sword icon if this square is a capture in move preview
+                    if (selectedSquare && movePreviews.length > 0) {
+                      const isCapture = movePreviews.some(m => m.to === square && m.captured);
+                      if (isCapture) {
+                        return <SwordIcon />;
+                      }
+                    }
+                    return null;
+                  }}
+                />
+              </div>
             </div>
           </div>
 
@@ -258,7 +467,15 @@ const PuzzleSolver = () => {
               <div>
                 <span className="text-sm font-medium text-gray-500">Game Context</span>
                 <p className="text-gray-900">Move {puzzle.gameContext.moveNumber} - {puzzle.gameContext.originalMove}</p>
-                <p className="text-gray-600 text-sm">{puzzle.gameContext.player} to move</p>
+                <p className="text-gray-600 text-sm">{puzzle.gameContext.player === 'w' ? 'White' : puzzle.gameContext.player === 'b' ? 'Black' : puzzle.gameContext.player} to move</p>
+                {/*
+                <button
+                  className="mt-2 px-3 py-1 bg-blue-100 text-blue-800 rounded hover:bg-blue-200 text-sm font-medium"
+                  onClick={() => setShowPlayedModal(true)}
+                >
+                  How this was played
+                </button>
+                */}
               </div>
             </div>
           </div>
@@ -304,6 +521,86 @@ const PuzzleSolver = () => {
           </div>
         </div>
       </div>
+
+      {/* Star Rating Modal */}
+      {showRatingModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white rounded-lg shadow-lg p-8 max-w-sm w-full text-center">
+            <h3 className="text-xl font-bold mb-4">Puzzle Complete!</h3>
+            <div className="flex justify-center mb-4">
+              {Array.from({ length: 3 }, (_, i) => (
+                <span key={i} style={{ fontSize: '2rem', color: i < starRating ? '#facc15' : '#e5e7eb' }}>★</span>
+              ))}
+            </div>
+            <p className="mb-4 text-gray-700">
+              {starRating === 3 && 'Perfect!'}
+              {starRating === 2 && 'Great job!'}
+              {starRating === 1 && 'Good effort!'}
+              {starRating === 0 && 'Try again for a better score!'}
+            </p>
+            <button
+              onClick={() => setShowRatingModal(false)}
+              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for "How this was played" with animated demo */}
+      {showPlayedModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md relative">
+            <button
+              className="absolute top-2 right-2 text-gray-400 hover:text-gray-700"
+              onClick={() => setShowPlayedModal(false)}
+            >
+              <span className="sr-only">Close</span>
+              &times;
+            </button>
+            <h3 className="text-lg font-bold mb-2">How this was played</h3>
+            <div className="flex flex-col items-center">
+              <div className="mb-4">
+                <Chessboard
+                  position={playedDemoFen || getFenBeforeOriginalMove()}
+                  arePiecesDraggable={false}
+                  boardWidth={320}
+                  animationDuration={isAnimatingPlayedMove ? 400 : 200}
+                  // Optionally, highlight the move
+                  customArrows={puzzle && puzzle.gameContext && puzzle.gameContext.originalMove ? [
+                    (() => {
+                      const tempChess = new Chess(getFenBeforeOriginalMove());
+                      const move = tempChess.move(puzzle.gameContext.originalMove);
+                      if (!move) return null;
+                      return [move.from, move.to, '#f59e42'];
+                    })()
+                  ].filter(Boolean) : []}
+                />
+              </div>
+              <div className="flex gap-2 mb-2">
+                <button
+                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  onClick={playOriginalMoveDemo}
+                  disabled={isAnimatingPlayedMove}
+                >
+                  Replay Move
+                </button>
+                <button
+                  className="px-3 py-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+                  onClick={() => setShowPlayedModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="text-sm text-gray-600">
+                <span>This is what was played in the real game:</span>
+                <span className="ml-2 font-mono font-bold">{puzzle && puzzle.gameContext && puzzle.gameContext.originalMove}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

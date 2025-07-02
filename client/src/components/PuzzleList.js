@@ -35,7 +35,8 @@ const PuzzleList = ({ puzzles }) => {
             border: '1px solid #ccc', 
             padding: '15px', 
             marginBottom: '10px',
-            backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white'
+            backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white',
+            transition: 'all 0.3s ease'
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -77,33 +78,14 @@ const PuzzleList = ({ puzzles }) => {
                 color: 'white',
                 padding: '8px 16px',
                 textDecoration: 'none',
-                fontSize: '14px'
+                fontSize: '14px',
+                transition: 'all 0.2s ease'
               }}
               onMouseOver={(e) => e.target.style.backgroundColor = '#0052a3'}
               onMouseOut={(e) => e.target.style.backgroundColor = '#0066cc'}
             >
               Solve Puzzle
             </Link>
-            
-            <button
-              style={{
-                backgroundColor: '#666',
-                color: 'white',
-                padding: '8px 16px',
-                border: 'none',
-                fontSize: '14px',
-                cursor: 'pointer'
-              }}
-              onMouseOver={(e) => e.target.style.backgroundColor = '#555'}
-              onMouseOut={(e) => e.target.style.backgroundColor = '#666'}
-              onClick={() => {
-                // Show solution in alert for now
-                const solution = puzzle.solution?.moves?.join(' → ') || 'Solution not available';
-                alert(`Solution: ${solution}`);
-              }}
-            >
-              Show Solution
-            </button>
           </div>
         </div>
       ))}
