@@ -489,7 +489,15 @@ const PuzzleSolver = () => {
           {/* Explanation */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h4 className="font-semibold text-gray-900 mb-3">Explanation</h4>
-            <p className="text-gray-700 leading-relaxed">{puzzle.explanation}</p>
+            {puzzle.explanation && puzzle.explanation.description && (
+              <p className="text-gray-700 leading-relaxed mb-2">{puzzle.explanation.description}</p>
+            )}
+            {puzzle.explanation && puzzle.explanation.clue && (
+              <p className="text-gray-600 leading-relaxed mb-2"><strong>Clue:</strong> {puzzle.explanation.clue}</p>
+            )}
+            {puzzle.explanation && puzzle.explanation.detailedClue && (
+              <p className="text-gray-500 leading-relaxed text-sm"><strong>More context:</strong> {puzzle.explanation.detailedClue}</p>
+            )}
           </div>
 
           {/* Solution (Hidden by default) */}
