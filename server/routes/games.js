@@ -2,8 +2,10 @@ const express = require('express');
 const router = express.Router();
 const ChessComService = require('../services/chessComService');
 const lichessService = require('../services/lichessService');
+const PuzzleGenerator = require('../services/puzzleGenerator');
 
 const chessComService = new ChessComService();
+const puzzleGenerator = new PuzzleGenerator();
 
 /**
  * POST /api/games/analyze
@@ -45,7 +47,7 @@ router.post('/analyze', async (req, res) => {
 
 /**
  * POST /api/games/validate-url
- * Validate if a URL is a valid chess.com game URL
+ * Validate if a URL is a valid chess.com or lichess.org game URL
  */
 router.post('/validate-url', async (req, res) => {
   try {
@@ -57,12 +59,20 @@ router.post('/validate-url', async (req, res) => {
       });
     }
     
-    const isValid = chessComService.isValidChessComUrl(gameUrl);
+    // Check if it's a chess.com URL
+    const isChessCom = chessComService.isValidChessComUrl(gameUrl);
+    
+    // Check if it's a lichess.org URL
+    const isLichess = gameUrl.includes('lichess.org') && gameUrl.match(/lichess\.org\/[a-zA-Z0-9]{8,}/) !== null;
+    
+    const isValid = isChessCom || isLichess;
+    const platform = isChessCom ? 'chess.com' : isLichess ? 'lichess.org' : 'unknown';
     
     res.json({
       success: true,
       isValid,
-      message: isValid ? 'Valid chess.com URL' : 'Invalid chess.com URL format'
+      platform,
+      message: isValid ? `Valid ${platform} URL` : 'Invalid URL format. Please use chess.com or lichess.org URLs'
     });
     
   } catch (error) {
@@ -179,11 +189,11 @@ router.get('/lichess/game/:gameId', async (req, res) => {
 
 /**
  * POST /api/games/import
- * Bulk import games from multiple platforms
+ * Bulk import games from multiple platforms and generate puzzles
  */
 router.post('/import', async (req, res) => {
   try {
-    const { platform, username, maxGames = 50 } = req.body;
+    const { platform, username, maxGames = 10, maxPuzzles = 5 } = req.body;
     
     if (!platform || !username) {
       return res.status(400).json({ 
@@ -191,15 +201,15 @@ router.post('/import', async (req, res) => {
       });
     }
     
-    console.log('📥 Importing games for:', username, 'from', platform);
+    console.log('📥 Importing games for:', username, 'from', platform, `(max: ${maxGames} games, ${maxPuzzles} puzzles)`);
     
     let games = [];
     
     switch (platform.toLowerCase()) {
-      case 'chesscom':
+      case 'chess.com':
         games = await chessComService.getPlayerGames(username, parseInt(maxGames));
         break;
-      case 'lichess':
+      case 'lichess.org':
         if (!lichessService.validateUsername(username)) {
           return res.status(400).json({ 
             error: 'Invalid lichess username format' 
@@ -209,15 +219,64 @@ router.post('/import', async (req, res) => {
         break;
       default:
         return res.status(400).json({ 
-          error: 'Unsupported platform. Use "chesscom" or "lichess"' 
+          error: 'Unsupported platform. Use "chess.com" or "lichess.org"' 
         });
     }
     
+    console.log(`📊 Found ${games.length} games, generating puzzles...`);
+    
+    // Generate puzzles from the imported games
+    const allPuzzles = [];
+    let processedGames = 0;
+    const startTime = Date.now();
+    
+    // Process games until we have enough puzzles or run out of games
+    for (const game of games) {
+      if (allPuzzles.length >= maxPuzzles) {
+        console.log(`✅ Reached target of ${maxPuzzles} puzzles`);
+        break;
+      }
+      
+      try {
+        let gameUrl;
+        if (platform === 'chess.com') {
+          gameUrl = `https://www.chess.com/game/live/${game.id}`;
+        } else {
+          gameUrl = `https://lichess.org/${game.id}`;
+        }
+        
+        const puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(gameUrl);
+        if (puzzleResult.puzzles && puzzleResult.puzzles.length > 0) {
+          // Add puzzles but respect the max limit
+          const remainingSlots = maxPuzzles - allPuzzles.length;
+          const puzzlesToAdd = puzzleResult.puzzles.slice(0, remainingSlots);
+          allPuzzles.push(...puzzlesToAdd);
+        }
+        processedGames++;
+        
+        // Add delay to prevent overwhelming the engine
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (error) {
+        console.error(`Error generating puzzles for game ${game.id}:`, error);
+      }
+    }
+    
+    const processingTime = Math.round((Date.now() - startTime) / 1000);
+    console.log(`🧩 Generated ${allPuzzles.length} puzzles from ${processedGames} games in ${processingTime}s`);
+    
     res.json({ 
       success: true, 
-      games,
-      count: games.length,
-      platform 
+      gamesImported: games.length,
+      gamesProcessed: processedGames,
+      puzzles: allPuzzles,
+      summary: {
+        type: 'bulk',
+        platform,
+        username,
+        gamesImported: games.length,
+        puzzlesGenerated: allPuzzles.length,
+        processingTime: `${processingTime}s`
+      }
     });
     
   } catch (error) {

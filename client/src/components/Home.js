@@ -1,30 +1,32 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ChessKnight, Zap, Target, TrendingUp, Loader2, CheckCircle, AlertCircle, Download } from 'lucide-react';
-import UrlInput from './UrlInput';
+import UnifiedGameInput from './UnifiedGameInput';
 import PuzzleList from './PuzzleList';
-import BulkImport from './BulkImport';
 
 const Home = () => {
   const [puzzles, setPuzzles] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [gameData, setGameData] = useState(null);
-  const [activeTab, setActiveTab] = useState('single');
 
-  const handlePuzzleGeneration = async (gameUrl) => {
+  const handlePuzzleGeneration = async (inputData) => {
     setLoading(true);
     setError(null);
     setPuzzles(null);
     setGameData(null);
 
     try {
-      const response = await fetch('/api/puzzles/generate', {
+      // Bulk import only
+      const response = await fetch('/api/games/import', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ gameUrl }),
+        body: JSON.stringify({
+          platform: inputData.platform,
+          username: inputData.username,
+          maxGames: inputData.maxGames,
+          maxPuzzles: inputData.maxPuzzles
+        }),
       });
 
       const data = await response.json();
@@ -33,8 +35,8 @@ const Home = () => {
         throw new Error(data.message || 'Failed to generate puzzles');
       }
 
-      setPuzzles(data.puzzles);
-      setGameData(data.game);
+      setPuzzles(data.puzzles || []);
+      setGameData(data.summary || { type: 'bulk', gamesImported: data.gamesImported });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -43,193 +45,111 @@ const Home = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto">
-      {/* Hero Section */}
-      <div className="text-center mb-12">
-        <div className="flex justify-center mb-6">
-          <div className="bg-blue-100 p-4 rounded-full">
-            <ChessKnight className="h-12 w-12 text-blue-600" />
-          </div>
-        </div>
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">
-          Generate Personalized Chess Puzzles
-        </h1>
-        <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-          Input your chess.com game URL and get custom puzzles based on critical positions from your actual games. 
-          Learn from your mistakes and improve your tactical awareness.
-        </p>
-      </div>
+    <div style={{ fontFamily: 'monospace', maxWidth: '800px', margin: '0 auto', padding: '20px' }}>
+      {/* ASCII Art Header */}
+      <pre style={{ textAlign: 'center', fontSize: '12px', color: '#666' }}>
+{`
+╔══════════════════════════════════════════════════════════════╗
+║                    CHESS PUZZLE BUILDER                     ║
+║              Personalized Puzzles from Your Games            ║
+╚══════════════════════════════════════════════════════════════╝
+`}
+      </pre>
 
       {/* Features */}
-      <div className="grid md:grid-cols-3 gap-8 mb-12">
-        <div className="text-center p-6 bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="bg-green-100 p-3 rounded-full w-12 h-12 mx-auto mb-4 flex items-center justify-center">
-            <Zap className="h-6 w-6 text-green-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Smart Analysis</h3>
-          <p className="text-gray-600">
-            Uses Stockfish engine to analyze every position and identify tactical opportunities.
-          </p>
-        </div>
-        <div className="text-center p-6 bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="bg-blue-100 p-3 rounded-full w-12 h-12 mx-auto mb-4 flex items-center justify-center">
-            <Target className="h-6 w-6 text-blue-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Personalized Learning</h3>
-          <p className="text-gray-600">
-            Puzzles are created from your actual games, making them highly relevant to your playing style.
-          </p>
-        </div>
-        <div className="text-center p-6 bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="bg-purple-100 p-3 rounded-full w-12 h-12 mx-auto mb-4 flex items-center justify-center">
-            <TrendingUp className="h-6 w-6 text-purple-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Track Progress</h3>
-          <p className="text-gray-600">
-            Monitor your improvement with detailed analysis and difficulty ratings for each puzzle.
-          </p>
-        </div>
+      <div style={{ marginBottom: '30px' }}>
+        <h2 style={{ borderBottom: '1px solid #ccc', paddingBottom: '5px' }}>How It Works:</h2>
+        <ol style={{ paddingLeft: '20px' }}>
+          <li><strong>Enter your username</strong> from chess.com or lichess.org</li>
+          <li><strong>We analyze your last 10 games</strong> to find tactical opportunities</li>
+          <li><strong>Get 5 personalized puzzles</strong> based on your playing style</li>
+          <li><strong>Improve your game</strong> by learning from your own mistakes</li>
+        </ol>
       </div>
 
-      {/* Import Options */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Import Your Games</h2>
-          <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setActiveTab('single')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'single'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Single Game
-            </button>
-            <button
-              onClick={() => setActiveTab('bulk')}
-              className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                activeTab === 'bulk'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              <Download className="h-4 w-4 inline mr-1" />
-              Bulk Import
-            </button>
-          </div>
-        </div>
-
-        {activeTab === 'single' ? (
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4 text-center">Analyze a Single Game</h3>
-            <UrlInput onGenerate={handlePuzzleGeneration} />
-          </div>
-        ) : (
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4 text-center">Import Multiple Games</h3>
-            <BulkImport />
-          </div>
-        )}
+      {/* Input Section */}
+      <div style={{ border: '1px solid #ccc', padding: '20px', marginBottom: '20px' }}>
+        <h3 style={{ marginTop: 0 }}>Create Your Personalized Puzzles</h3>
+        <p>Enter your username and we'll analyze your recent games to create custom puzzles just for you.</p>
+        <UnifiedGameInput onGenerate={handlePuzzleGeneration} />
       </div>
 
       {/* Loading State */}
       {loading && (
-        <div className="text-center py-12">
-          <Loader2 className="h-12 w-12 text-blue-600 animate-spin mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Analyzing your game...
-          </h3>
-          <p className="text-gray-600">
-            This may take 30-60 seconds depending on the game length and complexity.
+        <div style={{ textAlign: 'center', padding: '20px', border: '1px solid #ccc' }}>
+          <div style={{ fontSize: '20px' }}>⏳</div>
+          <h3>Analyzing Your Games...</h3>
+          <p>This may take 1-2 minutes.</p>
+          <p style={{ fontSize: '12px', color: '#666' }}>
+            We're finding the best tactical positions from your last 10 games
           </p>
         </div>
       )}
 
       {/* Error State */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-8">
-          <div className="flex items-center mb-4">
-            <AlertCircle className="h-5 w-5 text-red-600 mr-2" />
-            <h3 className="text-lg font-semibold text-red-900">Error</h3>
-          </div>
-          <p className="text-red-700">{error}</p>
+        <div style={{ 
+          border: '1px solid #f00', 
+          backgroundColor: '#fff0f0', 
+          padding: '15px', 
+          marginBottom: '20px',
+          color: '#c00'
+        }}>
+          <h3>❌ Error</h3>
+          <p>{error}</p>
         </div>
       )}
 
       {/* Results */}
       {puzzles && gameData && (
-        <div className="space-y-8">
+        <div>
           {/* Game Summary */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Game Summary</h3>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-500">Players</p>
-                <p className="font-semibold">{gameData.white} vs {gameData.black}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Result</p>
-                <p className="font-semibold">{gameData.result}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Game Type</p>
-                <p className="font-semibold capitalize">{gameData.type}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Puzzles Generated</p>
-                <p className="font-semibold text-blue-600">{puzzles.length}</p>
-              </div>
+          <div style={{ border: '1px solid #ccc', padding: '15px', marginBottom: '20px' }}>
+            <h3 style={{ marginTop: 0 }}>Analysis Complete</h3>
+            <div>
+              <p><strong>Username:</strong> {gameData.username}</p>
+              <p><strong>Platform:</strong> {gameData.platform}</p>
+              <p><strong>Games Analyzed:</strong> {gameData.gamesImported}</p>
+              <p><strong>Puzzles Generated:</strong> {puzzles.length}</p>
+              <p><strong>Processing Time:</strong> {gameData.processingTime || '~2 minutes'}</p>
             </div>
           </div>
 
           {/* Puzzles List */}
           <div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-6">Generated Puzzles</h3>
+            <h3>Your Personalized Puzzles ({puzzles.length})</h3>
+            <p style={{ fontSize: '14px', color: '#666', marginBottom: '15px' }}>
+              These puzzles are based on positions from your actual games where you missed tactical opportunities.
+            </p>
             <PuzzleList puzzles={puzzles} />
           </div>
         </div>
       )}
 
-      {/* How it works */}
-      <div className="mt-16 bg-gray-50 rounded-lg p-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">How It Works</h2>
-        <div className="grid md:grid-cols-4 gap-6">
-          <div className="text-center">
-            <div className="bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center mx-auto mb-3 font-bold">
-              1
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">Paste Game URL</h4>
-            <p className="text-sm text-gray-600">
-              Copy a chess.com game URL and paste it into the input field above.
-            </p>
+      {/* Why This Works */}
+      <div style={{ 
+        marginTop: '40px', 
+        padding: '20px', 
+        border: '1px solid #ccc',
+        backgroundColor: '#f9f9f9'
+      }}>
+        <h3 style={{ marginTop: 0 }}>Why Personalized Puzzles Work Better</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: '14px' }}>
+          <div>
+            <strong>🎯 Targeted Learning</strong>
+            <p>Puzzles from your games focus on your specific weaknesses</p>
           </div>
-          <div className="text-center">
-            <div className="bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center mx-auto mb-3 font-bold">
-              2
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">Engine Analysis</h4>
-            <p className="text-sm text-gray-600">
-              Our Stockfish engine analyzes every position to find tactical opportunities.
-            </p>
+          <div>
+            <strong>📈 Real Improvement</strong>
+            <p>Learn from positions you actually encounter in your games</p>
           </div>
-          <div className="text-center">
-            <div className="bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center mx-auto mb-3 font-bold">
-              3
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">Puzzle Generation</h4>
-            <p className="text-sm text-gray-600">
-              Critical positions are converted into interactive puzzles with solutions.
-            </p>
+          <div>
+            <strong>⚡ Fast & Focused</strong>
+            <p>5 high-quality puzzles from your last 10 games</p>
           </div>
-          <div className="text-center">
-            <div className="bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center mx-auto mb-3 font-bold">
-              4
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">Practice & Learn</h4>
-            <p className="text-sm text-gray-600">
-              Solve puzzles, review solutions, and improve your tactical skills.
-            </p>
+          <div>
+            <strong>🔄 Continuous Updates</strong>
+            <p>New puzzles as you play more games</p>
           </div>
         </div>
       </div>

@@ -1,148 +1,127 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Target, Star, Play, TrendingUp, Crown } from 'lucide-react';
 
 const PuzzleList = ({ puzzles }) => {
+  if (!puzzles || puzzles.length === 0) {
+    return (
+      <div style={{ 
+        textAlign: 'center', 
+        padding: '20px', 
+        border: '1px solid #ccc',
+        fontFamily: 'monospace'
+      }}>
+        <p>No puzzles generated yet.</p>
+      </div>
+    );
+  }
+
+  const getDifficultyText = (difficulty) => {
+    if (difficulty <= 2) return 'Easy';
+    if (difficulty <= 4) return 'Medium';
+    if (difficulty <= 6) return 'Hard';
+    return 'Expert';
+  };
+
   const getDifficultyStars = (difficulty) => {
-    return Array.from({ length: 5 }, (_, i) => (
-      <Star
-        key={i}
-        className={`h-4 w-4 ${
-          i < difficulty ? 'text-yellow-500 fill-current' : 'text-gray-300'
-        }`}
-      />
-    ));
-  };
-
-  const getThemeIcon = (theme) => {
-    switch (theme) {
-      case 'mate':
-        return <Crown className="h-4 w-4 text-purple-600" />;
-      case 'winning_combination':
-        return <TrendingUp className="h-4 w-4 text-red-600" />;
-      case 'tactical_advantage':
-        return <Target className="h-4 w-4 text-orange-600" />;
-      case 'positional_advantage':
-        return <TrendingUp className="h-4 w-4 text-blue-600" />;
-      default:
-        return <Target className="h-4 w-4 text-green-600" />;
-    }
-  };
-
-  const getThemeLabel = (theme) => {
-    switch (theme) {
-      case 'mate':
-        return 'Checkmate';
-      case 'winning_combination':
-        return 'Winning Combination';
-      case 'tactical_advantage':
-        return 'Tactical Advantage';
-      case 'positional_advantage':
-        return 'Positional Advantage';
-      case 'tactical_opportunity':
-        return 'Tactical Opportunity';
-      default:
-        return theme;
-    }
-  };
-
-  const getDifficultyLabel = (difficulty) => {
-    switch (difficulty) {
-      case 1:
-        return 'Beginner';
-      case 2:
-        return 'Easy';
-      case 3:
-        return 'Medium';
-      case 4:
-        return 'Hard';
-      case 5:
-        return 'Expert';
-      default:
-        return 'Unknown';
-    }
-  };
-
-  const formatEvaluation = (evaluation) => {
-    if (evaluation === Infinity) {
-      return 'Mate';
-    }
-    if (evaluation === -Infinity) {
-      return 'Mate';
-    }
-    return `${evaluation > 0 ? '+' : ''}${evaluation.toFixed(1)}`;
+    return '★'.repeat(difficulty) + '☆'.repeat(6 - difficulty);
   };
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+    <div style={{ fontFamily: 'monospace' }}>
       {puzzles.map((puzzle, index) => (
-        <div
-          key={puzzle.id}
-          className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 puzzle-card hover:shadow-md transition-all"
+        <div 
+          key={puzzle.id || index}
+          style={{ 
+            border: '1px solid #ccc', 
+            padding: '15px', 
+            marginBottom: '10px',
+            backgroundColor: index % 2 === 0 ? '#f9f9f9' : 'white'
+          }}
         >
-          {/* Puzzle Header */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-2">
-              {getThemeIcon(puzzle.theme)}
-              <span className={`text-xs font-medium px-2 py-1 rounded-full theme-${puzzle.theme}`}>
-                {getThemeLabel(puzzle.theme)}
-              </span>
-            </div>
-            <div className="text-sm text-gray-500">
-              #{index + 1}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h4 style={{ margin: 0 }}>
+              Puzzle #{index + 1}
+            </h4>
+            <div style={{ fontSize: '12px', color: '#666' }}>
+              {getDifficultyText(puzzle.difficulty || 3)} ({getDifficultyStars(puzzle.difficulty || 3)})
             </div>
           </div>
 
-          {/* Difficulty */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">Difficulty</span>
-              <span className="text-sm text-gray-600">{getDifficultyLabel(puzzle.difficulty)}</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              {getDifficultyStars(puzzle.difficulty)}
-            </div>
+          <div style={{ marginBottom: '10px' }}>
+            <strong>Theme:</strong> {puzzle.theme || 'Tactical Opportunity'}
           </div>
 
-          {/* Evaluation */}
-          <div className="mb-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700">Evaluation</span>
-              <span className={`text-sm font-semibold ${
-                puzzle.solution.evaluation > 0 ? 'text-green-600' : 
-                puzzle.solution.evaluation < 0 ? 'text-red-600' : 'text-gray-600'
-              }`}>
-                {formatEvaluation(puzzle.solution.evaluation)}
-              </span>
+          {puzzle.explanation && (
+            <div style={{ marginBottom: '10px', fontSize: '14px' }}>
+              <strong>Description:</strong> {puzzle.explanation}
             </div>
-          </div>
+          )}
 
-          {/* Game Context */}
-          <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-            <div className="text-xs text-gray-600 space-y-1">
-              <div>Move {puzzle.gameContext.moveNumber}</div>
-              <div>Original: {puzzle.gameContext.originalMove}</div>
-              <div>Player: {puzzle.gameContext.player}</div>
+          {puzzle.gameContext && (
+            <div style={{ marginBottom: '10px', fontSize: '12px', color: '#666' }}>
+              <strong>Game Context:</strong> Move {puzzle.gameContext.moveNumber}, {puzzle.gameContext.player} to play
             </div>
-          </div>
+          )}
 
-          {/* Explanation Preview */}
-          <div className="mb-4">
-            <p className="text-sm text-gray-600 line-clamp-2">
-              {puzzle.explanation}
-            </p>
-          </div>
+          {puzzle.evaluation && (
+            <div style={{ marginBottom: '10px', fontSize: '12px' }}>
+              <strong>Evaluation:</strong> {puzzle.evaluation > 0 ? '+' : ''}{puzzle.evaluation}
+            </div>
+          )}
 
-          {/* Action Button */}
-          <Link
-            to={`/puzzle/${puzzle.id}`}
-            className="w-full flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-          >
-            <Play className="h-4 w-4 mr-2" />
-            Solve Puzzle
-          </Link>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+            <Link
+              to={`/puzzle/${puzzle.id || index}`}
+              style={{
+                backgroundColor: '#0066cc',
+                color: 'white',
+                padding: '8px 16px',
+                textDecoration: 'none',
+                fontSize: '14px'
+              }}
+              onMouseOver={(e) => e.target.style.backgroundColor = '#0052a3'}
+              onMouseOut={(e) => e.target.style.backgroundColor = '#0066cc'}
+            >
+              Solve Puzzle
+            </Link>
+            
+            <button
+              style={{
+                backgroundColor: '#666',
+                color: 'white',
+                padding: '8px 16px',
+                border: 'none',
+                fontSize: '14px',
+                cursor: 'pointer'
+              }}
+              onMouseOver={(e) => e.target.style.backgroundColor = '#555'}
+              onMouseOut={(e) => e.target.style.backgroundColor = '#666'}
+              onClick={() => {
+                // Show solution in alert for now
+                const solution = puzzle.solution?.moves?.join(' → ') || 'Solution not available';
+                alert(`Solution: ${solution}`);
+              }}
+            >
+              Show Solution
+            </button>
+          </div>
         </div>
       ))}
+
+      <div style={{ 
+        textAlign: 'center', 
+        marginTop: '20px', 
+        padding: '15px', 
+        border: '1px solid #ccc',
+        backgroundColor: '#f0f8ff'
+      }}>
+        <p style={{ margin: 0, fontSize: '14px' }}>
+          <strong>Total Puzzles:</strong> {puzzles.length} | 
+          <strong> Average Difficulty:</strong> {
+            Math.round(puzzles.reduce((sum, p) => sum + (p.difficulty || 3), 0) / puzzles.length)
+          }/6
+        </p>
+      </div>
     </div>
   );
 };

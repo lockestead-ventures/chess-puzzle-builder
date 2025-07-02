@@ -1,5 +1,6 @@
 const { Chess } = require('chess.js');
 const ChessComService = require('./chessComService');
+const lichessService = require('./lichessService');
 const StockfishService = require('./stockfishService');
 
 class PuzzleGenerator {
@@ -9,14 +10,14 @@ class PuzzleGenerator {
   }
 
   /**
-   * Generate puzzles from a chess.com game URL
+   * Generate puzzles from a chess.com or lichess.org game URL
    */
   async generatePuzzlesFromGame(gameUrl) {
     try {
       console.log('🎯 Starting puzzle generation for:', gameUrl);
       
-      // 1. Fetch game data from chess.com
-      const gameData = await this.chessComService.fetchGameData(gameUrl);
+      // 1. Detect platform and fetch game data
+      const gameData = await this.fetchGameData(gameUrl);
       console.log('📊 Game data fetched:', gameData.white, 'vs', gameData.black);
       
       // 2. Analyze game positions
@@ -43,6 +44,32 @@ class PuzzleGenerator {
     } catch (error) {
       console.error('Error generating puzzles:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Fetch game data from chess.com or lichess.org
+   */
+  async fetchGameData(gameUrl) {
+    if (gameUrl.includes('chess.com')) {
+      return await this.chessComService.fetchGameData(gameUrl);
+    } else if (gameUrl.includes('lichess.org')) {
+      // Extract game ID from lichess URL
+      const gameId = gameUrl.split('/').pop();
+      const game = await lichessService.getGame(gameId);
+      
+      // Transform lichess game data to match chess.com format
+      return {
+        id: game.id,
+        white: game.players.white.name || game.players.white.userId,
+        black: game.players.black.name || game.players.black.userId,
+        result: game.winner ? (game.winner === 'white' ? '1-0' : '0-1') : '1/2-1/2',
+        type: game.speed || 'rapid',
+        pgn: game.pgn,
+        platform: 'lichess'
+      };
+    } else {
+      throw new Error('Unsupported platform. Only chess.com and lichess.org URLs are supported.');
     }
   }
 
@@ -87,35 +114,113 @@ class PuzzleGenerator {
 
   /**
    * Find positions with tactical opportunities
+   * Enhanced version with multiple analysis depths and themes
    */
   async findTacticalPositions(positions, threshold = 1.0) {
     const tacticalPositions = [];
     
-    // Skip the first few moves (opening)
-    const positionsToAnalyze = positions.slice(5);
+    // Skip the first few moves (opening) but analyze more positions
+    const positionsToAnalyze = positions.slice(3);
     
-    for (const position of positionsToAnalyze) {
+    console.log(`🔍 Analyzing ${positionsToAnalyze.length} positions for tactical opportunities...`);
+    
+    for (let i = 0; i < positionsToAnalyze.length; i++) {
+      const position = positionsToAnalyze[i];
+      
       try {
+        // Multi-depth analysis for better accuracy
         const tactical = await this.stockfishService.findTacticalOpportunities(
           position.fen, 
           threshold
         );
         
         if (tactical) {
-          tacticalPositions.push({
+          // Enhanced position data with more context
+          const enhancedPosition = {
             ...position,
-            ...tactical
-          });
+            ...tactical,
+            analysisDepth: tactical.depth || 20,
+            tacticalType: this.classifyTacticalType(tactical),
+            positionQuality: this.assessPositionQuality(position, tactical),
+            learningValue: this.calculateLearningValue(tactical)
+          };
+          
+          tacticalPositions.push(enhancedPosition);
         }
         
-        // Add small delay to prevent overwhelming the engine
-        await new Promise(resolve => setTimeout(resolve, 50));
+        // Adaptive delay based on position complexity
+        const delay = position.moveNumber > 20 ? 30 : 50;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // Progress logging
+        if ((i + 1) % 10 === 0) {
+          console.log(`📊 Analyzed ${i + 1}/${positionsToAnalyze.length} positions...`);
+        }
       } catch (error) {
         console.error(`Error analyzing position ${position.moveNumber}:`, error);
       }
     }
     
+    console.log(`⚡ Found ${tacticalPositions.length} tactical positions`);
     return tacticalPositions;
+  }
+
+  /**
+   * Classify the type of tactical opportunity
+   */
+  classifyTacticalType(tactical) {
+    const evaluation = Math.abs(tactical.evaluation);
+    
+    if (evaluation >= 3.0) return 'winning_combination';
+    if (evaluation >= 1.5) return 'tactical_advantage';
+    if (evaluation >= 0.8) return 'positional_improvement';
+    return 'subtle_opportunity';
+  }
+
+  /**
+   * Assess the quality of a position for puzzle creation
+   */
+  assessPositionQuality(position, tactical) {
+    let quality = 0;
+    
+    // Higher quality for positions with clear tactical themes
+    if (tactical.theme) quality += 2;
+    
+    // Higher quality for positions with significant evaluation changes
+    if (Math.abs(tactical.evaluation) > 1.0) quality += 2;
+    
+    // Higher quality for positions in the middlegame/endgame
+    if (position.moveNumber > 10 && position.moveNumber < 40) quality += 1;
+    
+    // Lower quality for very early or very late positions
+    if (position.moveNumber < 5) quality -= 1;
+    if (position.moveNumber > 50) quality -= 1;
+    
+    return Math.max(0, quality);
+  }
+
+  /**
+   * Calculate the learning value of a tactical position
+   */
+  calculateLearningValue(tactical) {
+    let value = 0;
+    
+    // Higher value for positions that teach common patterns
+    if (tactical.theme === 'fork' || tactical.theme === 'pin' || tactical.theme === 'skewer') {
+      value += 3;
+    }
+    
+    // Higher value for positions with multiple tactical ideas
+    if (tactical.alternativeMoves && tactical.alternativeMoves.length > 1) {
+      value += 2;
+    }
+    
+    // Higher value for positions with clear winning sequences
+    if (Math.abs(tactical.evaluation) > 2.0) {
+      value += 2;
+    }
+    
+    return value;
   }
 
   /**

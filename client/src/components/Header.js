@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { ChessKnight, Home, BarChart3, User, LogOut } from 'lucide-react';
 import AuthModal from './AuthModal';
 
 const Header = () => {
@@ -20,74 +19,126 @@ const Header = () => {
 
   return (
     <>
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo and Brand */}
-            <Link to="/" className="flex items-center space-x-2 text-gray-900 hover:text-blue-600 transition-colors">
-              <ChessKnight className="h-8 w-8 text-blue-600" />
-              <div>
-                <h1 className="text-xl font-bold">Chess Puzzle Builder</h1>
-                <p className="text-xs text-gray-500">Learn from your games</p>
-              </div>
+      <div style={{ 
+        borderBottom: '2px solid #ccc', 
+        padding: '15px 0',
+        fontFamily: 'monospace',
+        backgroundColor: '#f8f8f8'
+      }}>
+        <div style={{ 
+          maxWidth: '1200px', 
+          margin: '0 auto', 
+          padding: '0 20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          {/* Logo and Brand */}
+          <Link 
+            to="/" 
+            style={{ 
+              textDecoration: 'none', 
+              color: '#333',
+              fontSize: '18px',
+              fontWeight: 'bold'
+            }}
+          >
+            ♔ CHESS PUZZLE BUILDER
+          </Link>
+
+          {/* Navigation */}
+          <nav style={{ display: 'flex', gap: '30px' }}>
+            <Link 
+              to="/" 
+              style={{ 
+                textDecoration: 'none', 
+                color: '#666',
+                fontSize: '14px'
+              }}
+            >
+              🏠 Home
             </Link>
+            <Link 
+              to="/analysis" 
+              style={{ 
+                textDecoration: 'none', 
+                color: '#666',
+                fontSize: '14px'
+              }}
+            >
+              📊 Analysis
+            </Link>
+          </nav>
 
-            {/* Navigation */}
-            <nav className="flex items-center space-x-6">
-              <Link 
-                to="/" 
-                className="flex items-center space-x-1 text-gray-600 hover:text-blue-600 transition-colors"
-              >
-                <Home className="h-4 w-4" />
-                <span>Home</span>
-              </Link>
-              <Link 
-                to="/analysis" 
-                className="flex items-center space-x-1 text-gray-600 hover:text-blue-600 transition-colors"
-              >
-                <BarChart3 className="h-4 w-4" />
-                <span>Analysis</span>
-              </Link>
-            </nav>
-
-            {/* User Menu */}
-            <div className="flex items-center space-x-4">
-              {user ? (
-                <div className="flex items-center space-x-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                      <User className="h-4 w-4 text-blue-600" />
-                    </div>
-                    <span className="text-sm font-medium text-gray-700">{user.username}</span>
-                  </div>
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center space-x-1 text-gray-600 hover:text-red-600 transition-colors"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    <span className="text-sm">Logout</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center space-x-3">
-                  <button
-                    onClick={() => handleAuthClick('login')}
-                    className="text-gray-600 hover:text-blue-600 transition-colors"
-                  >
-                    Sign In
-                  </button>
-                  <button
-                    onClick={() => handleAuthClick('register')}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    Sign Up
-                  </button>
-                </div>
-              )}
-            </div>
+          {/* User Menu */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            {user ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                <span style={{ fontSize: '14px', color: '#333' }}>
+                  👤 {user.username}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    backgroundColor: '#dc3545',
+                    color: 'white',
+                    border: 'none',
+                    padding: '8px 16px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace'
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#c82333'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = '#dc3545'}
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '15px' }}>
+                <button
+                  onClick={() => handleAuthClick('login')}
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: '#0066cc',
+                    border: '1px solid #0066cc',
+                    padding: '8px 16px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace'
+                  }}
+                  onMouseOver={(e) => {
+                    e.target.style.backgroundColor = '#0066cc';
+                    e.target.style.color = 'white';
+                  }}
+                  onMouseOut={(e) => {
+                    e.target.style.backgroundColor = 'transparent';
+                    e.target.style.color = '#0066cc';
+                  }}
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => handleAuthClick('register')}
+                  style={{
+                    backgroundColor: '#0066cc',
+                    color: 'white',
+                    border: 'none',
+                    padding: '8px 16px',
+                    fontSize: '12px',
+                    cursor: 'pointer',
+                    fontFamily: 'monospace'
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#0052a3'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = '#0066cc'}
+                >
+                  Sign Up
+                </button>
+              </div>
+            )}
           </div>
         </div>
-      </header>
+      </div>
 
       <AuthModal
         isOpen={showAuthModal}

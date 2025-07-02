@@ -12,6 +12,7 @@ class ChessComService {
    * - https://www.chess.com/game/live/1234567890
    * - https://www.chess.com/game/daily/1234567890
    * - https://www.chess.com/play/online/archive/username/1234567890
+   * - https://www.chess.com/game/archive/username/1234567890
    */
   parseChessComUrl(url) {
     try {
@@ -19,15 +20,28 @@ class ChessComService {
       
       // Handle different URL patterns
       if (urlObj.pathname.includes('/game/')) {
-        const parts = urlObj.pathname.split('/');
-        const gameType = parts[2]; // 'live' or 'daily'
-        const gameId = parts[3];
-        return { gameType, gameId };
+        const parts = urlObj.pathname.split('/').filter(part => part.length > 0);
+        
+        // Pattern: /game/live/1234567890 or /game/daily/1234567890
+        if (parts.length >= 3 && ['live', 'daily'].includes(parts[1])) {
+          const gameType = parts[1];
+          const gameId = parts[2];
+          return { gameType, gameId };
+        }
+        
+        // Pattern: /game/archive/username/1234567890
+        if (parts.length >= 4 && parts[1] === 'archive') {
+          const username = parts[2];
+          const gameId = parts[3];
+          return { username, gameId };
+        }
       } else if (urlObj.pathname.includes('/play/online/archive/')) {
-        const parts = urlObj.pathname.split('/');
-        const username = parts[4];
-        const gameId = parts[5];
-        return { username, gameId };
+        const parts = urlObj.pathname.split('/').filter(part => part.length > 0);
+        if (parts.length >= 5) {
+          const username = parts[4];
+          const gameId = parts[5];
+          return { username, gameId };
+        }
       }
       
       throw new Error('Unsupported chess.com URL format');
