@@ -22,6 +22,7 @@ class Puzzle {
       difficulty: puzzleData.difficulty,
       explanation: puzzleData.explanation,
       gameContext: puzzleData.gameContext,
+      gameData: puzzleData.gameData, // Include game data for usernames
       metadata: {
         createdAt: new Date().toISOString(),
         engineDepth: puzzleData.metadata?.engineDepth || 15,

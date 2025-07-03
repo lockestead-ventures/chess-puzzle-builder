@@ -551,6 +551,13 @@ class PuzzleGenerator {
           player: position.color,
           gameUrl: gameData.id
         },
+        gameData: {
+          white: gameData.white,
+          black: gameData.black,
+          result: gameData.result,
+          type: gameData.type,
+          platform: gameData.platform
+        },
         metadata: {
           createdAt: new Date().toISOString(),
           engineDepth: analysis.depth,
@@ -722,8 +729,14 @@ class PuzzleGenerator {
     const lastMove = PuzzleGenerator.parseSan(puzzle.lastMove);
     const firstSolutionMove = PuzzleGenerator.parseSan(puzzle.solution.moves[0]);
     const phase = PuzzleGenerator.getGamePhase(puzzle.gameContext.moveNumber);
+    
+    // Get player usernames from game data if available
+    const whitePlayer = puzzle.gameData?.white || 'White';
+    const blackPlayer = puzzle.gameData?.black || 'Black';
+    const currentPlayer = puzzle.gameContext.player === 'w' ? whitePlayer : blackPlayer;
+    const opponentPlayer = puzzle.gameContext.player === 'w' ? blackPlayer : whitePlayer;
 
-    // Description templates
+    // Description templates with usernames
     const descTemplates = [
       `${player}'s ${lastMove.piece} was just ${lastMove.capture ? 'captured' : 'moved'} in the ${phase}. The position has shifted, and both sides are looking for chances.`,
       `After ${player.toLowerCase()}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was captured' : 'moved'}, the ${phase} continues with tension on the board.`,
@@ -766,6 +779,10 @@ class PuzzleGenerator {
       `The ${phase} is a moment for boldness. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just lost' : 'just moved'}.`,
       `A ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was just captured' : 'just moved'}—the ${phase} is your canvas for a new plan.`,
       `The ${phase} is a crossroads. ${player}'s ${lastMove.piece} ${lastMove.capture ? 'was just lost' : 'just moved'}. The next move will set the direction.`,
+      // Add a few templates with usernames for variety
+      `${currentPlayer} and ${opponentPlayer} are locked in a ${phase} battle. ${currentPlayer}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'was just captured' : 'just moved'}.`,
+      `In this ${phase} position, ${currentPlayer} has just ${lastMove.capture ? 'lost' : 'moved'} a ${lastMove.piece.toLowerCase()}. ${opponentPlayer} is looking for a response.`,
+      `The ${phase} is heating up between ${currentPlayer} and ${opponentPlayer}. ${currentPlayer}'s ${lastMove.piece.toLowerCase()} ${lastMove.capture ? 'has fallen' : 'has just moved'}.`,
     ];
 
     // Clue templates
@@ -811,6 +828,9 @@ class PuzzleGenerator {
       `Let your ${firstSolutionMove.piece.toLowerCase()} lead the attack and open lines.`,
       `Can you use your ${firstSolutionMove.piece.toLowerCase()} to set up a devastating tactic?`,
       `Make your ${firstSolutionMove.piece.toLowerCase()} the key to unlocking the position.`,
+      // Add a couple of clues that mention the players
+      `Help ${opponentPlayer} find the best response to ${currentPlayer}'s last move.`,
+      `Show ${currentPlayer} how to capitalize on this position.`,
     ];
 
     const description = descTemplates[Math.floor(Math.random() * descTemplates.length)];
