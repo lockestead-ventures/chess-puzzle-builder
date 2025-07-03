@@ -428,13 +428,27 @@ class PuzzleGenerator {
       const position = tacticalPositions[i];
       
       try {
-        // Add delay for each puzzle creation
         await new Promise(resolve => setTimeout(resolve, 50));
-        
         const puzzle = await this.createPuzzleFromPosition(position, gameData);
-        
-        if (puzzle) {
-          puzzles.push(puzzle);
+        if (puzzle && puzzle.solution && puzzle.solution.moves && puzzle.solution.moves.length > 0) {
+          // Print the full puzzle object for debugging
+          console.log('DEBUG createPuzzles: candidate puzzle object:', puzzle);
+          // Extract FEN from the correct property
+          const fen = puzzle.position || puzzle.fen || (puzzle.puzzlePosition && puzzle.puzzlePosition.fen);
+          if (!fen || typeof fen !== 'string' || fen.split(' ').length < 6) {
+            console.warn(`DEBUG createPuzzles: Skipping puzzle due to invalid or missing FEN: ${fen}`);
+            continue;
+          }
+          const firstMove = puzzle.solution.moves[0];
+          const tempChess = puzzle.isChess960 ? new Chess({ variant: 'chess960' }) : new Chess();
+          tempChess.load(fen);
+          const legalMoves = tempChess.moves({ verbose: true });
+          const found = legalMoves.find(m => m.san === firstMove);
+          if (found) {
+            puzzles.push(puzzle);
+          } else {
+            console.log(`DEBUG createPuzzles: Skipping puzzle at FEN ${fen} because first move (${firstMove}) is not legal for side to move (${fen.split(' ')[1]})`);
+          }
         }
         
         // Progress logging with sophisticated messaging
