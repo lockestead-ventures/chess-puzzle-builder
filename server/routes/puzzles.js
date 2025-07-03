@@ -318,4 +318,98 @@ router.get('/health', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/puzzles/others?exclude=...
+ * Get a list of puzzles excluding the specified puzzle
+ */
+router.get('/others', async (req, res) => {
+  try {
+    const { exclude } = req.query;
+    let puzzles = puzzleModel.getAllPuzzles();
+    if (exclude) {
+      puzzles = puzzles.filter(p => p.id !== exclude);
+    }
+    // Shuffle and return up to 10 puzzles for variety
+    puzzles = puzzles.sort(() => 0.5 - Math.random()).slice(0, 10);
+    res.json({
+      success: true,
+      puzzles
+    });
+  } catch (error) {
+    console.error('Error fetching other puzzles:', error);
+    res.status(500).json({
+      error: 'Failed to fetch other puzzles',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/puzzles/generate-more
+ * Generate a new batch of puzzles and add them to the in-memory store
+ * (For demo: just re-run the import/generation logic for a random user or source)
+ */
+router.get('/generate-more', async (req, res) => {
+  try {
+    console.log('[DEBUG] /api/puzzles/generate-more endpoint hit');
+    // Accept username and platform as query parameters
+    const username = req.query.username || 'T-SQL';
+    const platform = req.query.platform || 'chess.com';
+    const maxGames = 10;
+    const maxPuzzles = 5;
+    console.log(`[DEBUG] Using username: ${username}, platform: ${platform}, maxGames: ${maxGames}, maxPuzzles: ${maxPuzzles}`);
+    // Use the same logic as /api/games/import
+    const chessComService = require('../services/chessComService');
+    const lichessService = require('../services/lichessService');
+    const PuzzleGenerator = require('../services/puzzleGenerator');
+    const puzzleGenerator = new PuzzleGenerator();
+    let games = [];
+    if (platform === 'chess.com' || platform === 'chesscom') {
+      games = await chessComService.getPlayerGames(username, maxGames);
+    } else if (platform === 'lichess.org' || platform === 'lichess') {
+      if (!lichessService.validateUsername(username)) {
+        return res.status(400).json({ success: false, error: 'Invalid lichess username format' });
+      }
+      games = await lichessService.getUserGames(username, maxGames);
+    } else {
+      return res.status(400).json({ success: false, error: 'Unsupported platform. Use "chess.com" or "lichess.org"' });
+    }
+    console.log(`[DEBUG] Fetched ${games.length} games for user ${username}`);
+    if (!games || games.length === 0) {
+      console.log('[DEBUG] No games found for this user');
+      return res.status(400).json({ success: false, error: 'No games found for this user.' });
+    }
+    // Pick a random game
+    const randomIndex = Math.floor(Math.random() * games.length);
+    const game = games[randomIndex];
+    console.log(`[DEBUG] Selected game index: ${randomIndex}, game ID: ${game.id || 'N/A'}`);
+    if (!game.pgn) {
+      console.log('[DEBUG] Selected game has no PGN');
+      return res.status(400).json({ success: false, error: 'Selected game has no PGN.' });
+    }
+    game.platform = platform;
+    const puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(game);
+    console.log(`[DEBUG] Generated ${puzzleResult.puzzles ? puzzleResult.puzzles.length : 0} puzzles from game`);
+    // Save puzzles to the in-memory store and collect the saved versions
+    const allPuzzles = [];
+    if (puzzleResult.puzzles && puzzleResult.puzzles.length > 0) {
+      for (const puzzle of puzzleResult.puzzles) {
+        const savedPuzzle = puzzleModel.createPuzzle({
+          ...puzzle,
+          userId: null, // No userId for now
+          gameId: game.id
+        });
+        allPuzzles.push(savedPuzzle);
+        console.log(`[DEBUG] Saved puzzle with ID: ${savedPuzzle.id}`);
+      }
+    } else {
+      console.log('[DEBUG] No puzzles generated to save');
+    }
+    res.json({ success: true, puzzles: allPuzzles });
+  } catch (error) {
+    console.error('[DEBUG] Error generating more puzzles:', error);
+    res.status(500).json({ success: false, error: 'Failed to generate more puzzles', message: error.message });
+  }
+});
+
 module.exports = router; 

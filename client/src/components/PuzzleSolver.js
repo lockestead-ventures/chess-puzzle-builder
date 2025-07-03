@@ -31,6 +31,11 @@ const PuzzleSolver = () => {
   const [lastMoveHighlight, setLastMoveHighlight] = useState(null); // Highlight last move
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false); // Success animation
   const [isOpponentMoving, setIsOpponentMoving] = useState(false); // Opponent move indicator
+  const [isReviewMode, setIsReviewMode] = useState(false);
+  const [isLoadingNextPuzzle, setIsLoadingNextPuzzle] = useState(false);
+  const [otherPuzzles, setOtherPuzzles] = useState([]);
+  const [hasLoadedOtherPuzzles, setHasLoadedOtherPuzzles] = useState(false);
+  const [showMorePuzzles, setShowMorePuzzles] = useState(false);
 
   useEffect(() => {
     loadPuzzle();
@@ -282,7 +287,16 @@ const PuzzleSolver = () => {
   };
 
   const getBoardOrientation = () => {
-    return puzzle?.gameContext?.player === 'black' ? 'black' : 'white';
+    if (puzzle && puzzle.position) {
+      // FEN format: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+      const fenParts = puzzle.position.split(' ');
+      if (fenParts.length > 1) {
+        return fenParts[1] === 'b' ? 'black' : 'white';
+      }
+    }
+    // fallback to gameContext if available
+    if (puzzle?.gameContext?.player === 'b' || puzzle?.gameContext?.player === 'black') return 'black';
+    return 'white';
   };
 
   // Highlight the piece to move for the next correct move
@@ -471,6 +485,118 @@ const PuzzleSolver = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPlayedModal]);
 
+  // Enhanced lazy loading: generate more puzzles on first move, then fetch others
+  useEffect(() => {
+    if (
+      userMoves.length === 1 &&
+      !hasLoadedOtherPuzzles &&
+      puzzle && puzzle.id
+    ) {
+      // Get username and platform from localStorage (or context/props)
+      const username = localStorage.getItem('username');
+      const platform = localStorage.getItem('platform');
+      // Trigger backend to generate more puzzles for this user/platform
+      fetch(`/api/puzzles/generate-more?username=${encodeURIComponent(username)}&platform=${encodeURIComponent(platform)}`)
+        .then(res => res.json())
+        .then(() => {
+          // After generation, fetch the new list of puzzles
+          fetch(`/api/puzzles/others?exclude=${puzzle.id}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data.success && Array.isArray(data.puzzles)) {
+                setOtherPuzzles(data.puzzles);
+              }
+              setHasLoadedOtherPuzzles(true);
+            })
+            .catch(() => setHasLoadedOtherPuzzles(true));
+        })
+        .catch(() => setHasLoadedOtherPuzzles(true));
+    }
+  }, [userMoves, hasLoadedOtherPuzzles, puzzle]);
+
+  // Update loadNextPuzzle to use preloaded puzzles if available
+  const loadNextPuzzle = async () => {
+    setIsLoadingNextPuzzle(true);
+    setShowRatingModal(false);
+    setIsReviewMode(false);
+    setUserMoves([]);
+    setCurrentMoveIndex(0);
+    setMoveNavIndex(0);
+    setShowSolution(false);
+    setIsCorrect(null);
+    setFailedAttempts(0);
+    setShowHint(false);
+    setStarRating(null);
+    setShowPlayedModal(false);
+    setPlayedDemoFen(null);
+    setIsAnimatingPlayedMove(false);
+    setMoveError(null);
+    setShowWrongMoveModal(false);
+    setWrongMoveData(null);
+    setBoardKey(0);
+    setLastMoveHighlight(null);
+    setShowSuccessAnimation(false);
+    setIsOpponentMoving(false);
+    setSelectedSquare(null);
+    setMovePreviews([]);
+    setPuzzle(null);
+    setLoading(true);
+    setError(null);
+    try {
+      let nextPuzzle = null;
+      if (otherPuzzles.length > 0) {
+        nextPuzzle = otherPuzzles[0];
+        setOtherPuzzles(otherPuzzles.slice(1));
+      } else {
+        // Fallback: fetch a new random puzzle from the backend
+        const response = await fetch('/api/puzzles/random');
+        if (!response.ok) throw new Error('Failed to load next puzzle');
+        const data = await response.json();
+        if (!data.success || !data.puzzle) throw new Error('No more puzzles available');
+        nextPuzzle = data.puzzle;
+      }
+      setPuzzle(nextPuzzle);
+      setChess(new Chess(nextPuzzle.position));
+      setLoading(false);
+      setHasLoadedOtherPuzzles(false); // Reset for next puzzle
+    } catch (err) {
+      setError('Failed to load next puzzle');
+      setLoading(false);
+    }
+    setIsLoadingNextPuzzle(false);
+  };
+
+  // Handler to load a puzzle from the list
+  const handleSelectOtherPuzzle = (puzzle) => {
+    setShowMorePuzzles(false);
+    setShowRatingModal(false);
+    setIsReviewMode(false);
+    setUserMoves([]);
+    setCurrentMoveIndex(0);
+    setMoveNavIndex(0);
+    setShowSolution(false);
+    setIsCorrect(null);
+    setFailedAttempts(0);
+    setShowHint(false);
+    setStarRating(null);
+    setShowPlayedModal(false);
+    setPlayedDemoFen(null);
+    setIsAnimatingPlayedMove(false);
+    setMoveError(null);
+    setShowWrongMoveModal(false);
+    setWrongMoveData(null);
+    setBoardKey(0);
+    setLastMoveHighlight(null);
+    setShowSuccessAnimation(false);
+    setIsOpponentMoving(false);
+    setSelectedSquare(null);
+    setMovePreviews([]);
+    setPuzzle(puzzle);
+    setChess(new Chess(puzzle.position));
+    setLoading(false);
+    setHasLoadedOtherPuzzles(false); // Reset for next puzzle
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-64">
@@ -500,41 +626,24 @@ const PuzzleSolver = () => {
     <div className="max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
-        <Link
-          to="/"
-          className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Puzzles
-        </Link>
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={resetPuzzle}
-            className="flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Reset
-          </button>
-          {failedAttempts >= 1 && (
+        {/* Only show the top navigation buttons if in review mode */}
+        {isReviewMode && (
+          <div className="flex flex-row justify-center gap-2 mt-6 mb-6">
             <button
-              onClick={handleShowHint}
-              className="flex items-center px-3 py-2 text-yellow-600 hover:text-yellow-700 transition-colors"
-              disabled={showHint}
+              onClick={loadNextPuzzle}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              disabled={isLoadingNextPuzzle}
             >
-              <Target className="h-4 w-4 mr-2" />
-              {showHint ? 'Hint Shown' : 'Show Hint'}
+              {isLoadingNextPuzzle ? 'Loading...' : 'Play Next Puzzle'}
             </button>
-          )}
-          {failedAttempts >= 5 && (
             <button
-              onClick={() => setShowSolution(!showSolution)}
-              className="flex items-center px-3 py-2 text-purple-600 hover:text-purple-700 transition-colors"
+              onClick={() => setShowMorePuzzles(true)}
+              className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
             >
-              {showSolution ? <EyeOff className="h-4 w-4 mr-2" /> : <Eye className="h-4 w-4 mr-2" />}
-              {showSolution ? 'Hide' : 'Show'} Solution
+              See More Puzzles
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-8">
@@ -542,25 +651,35 @@ const PuzzleSolver = () => {
         <div className="space-y-4">
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Puzzle Position</h3>
-            {/* Move Navigation */}
-            <div className="flex items-center justify-center mb-2 space-x-2">
-              <button
-                onClick={handleNavBack}
-                disabled={moveNavIndex === 0}
-                className={`p-2 rounded-full border ${moveNavIndex === 0 ? 'bg-gray-100 text-gray-400' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-                aria-label="Previous move"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <span className="text-sm text-gray-700">Move {moveNavIndex} / {puzzle ? puzzle.solution.moves.length : 0}</span>
-              <button
-                onClick={handleNavForward}
-                disabled={moveNavIndex === (puzzle ? puzzle.solution.moves.length : 0)}
-                className={`p-2 rounded-full border ${moveNavIndex === (puzzle ? puzzle.solution.moves.length : 0) ? 'bg-gray-100 text-gray-400' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
-                aria-label="Next move"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
+            {/* Ensure move navigation arrows are only visible in review mode */}
+            <div style={{ minHeight: '48px' }}>
+              {isReviewMode ? (
+                <div className="flex items-center justify-center space-x-4 my-4">
+                  <button
+                    onClick={handleNavBack}
+                    className={`p-2 rounded-full border transition-colors duration-150 ${moveNavIndex === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}`}
+                    disabled={moveNavIndex === 0}
+                    aria-disabled={moveNavIndex === 0}
+                  >
+                    <ChevronLeft className={`w-5 h-5 ${moveNavIndex === 0 ? 'text-gray-400' : 'text-blue-600'}`} />
+                  </button>
+                  <span className="text-gray-700 font-medium">Move {moveNavIndex + 1} / {puzzle.solution.moves.length}</span>
+                  <button
+                    onClick={handleNavForward}
+                    className={`p-2 rounded-full border transition-colors duration-150 ${moveNavIndex === puzzle.solution.moves.length - 1 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}`}
+                    disabled={moveNavIndex === puzzle.solution.moves.length - 1}
+                    aria-disabled={moveNavIndex === puzzle.solution.moves.length - 1}
+                  >
+                    <ChevronRight className={`w-5 h-5 ${moveNavIndex === puzzle.solution.moves.length - 1 ? 'text-gray-400' : 'text-blue-600'}`} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center my-4" style={{ height: '40px' }}>
+                  {isOpponentMoving && (
+                    <span className="text-gray-500 text-base font-medium">Opponent is thinking...</span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="chess-board">
               {/* Opponent Thinking Indicator */}
@@ -594,7 +713,7 @@ const PuzzleSolver = () => {
 
                 <Chessboard
                   key={boardKey}
-                  position={getBoardFenAtMove(currentMoveIndex)}
+                  position={isReviewMode ? getBoardFenAtMove(moveNavIndex) : getBoardFenAtMove(currentMoveIndex)}
                   onPieceDrop={onDrop}
                   boardOrientation={getBoardOrientation()}
                   customBoardStyle={{
@@ -781,12 +900,27 @@ const PuzzleSolver = () => {
               {starRating === 1 && 'Good effort!'}
               {starRating === 0 && 'Try again for a better score!'}
             </p>
-            <button
-              onClick={() => setShowRatingModal(false)}
-              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-              Close
-            </button>
+            <div className="flex flex-row justify-center gap-2 mt-4">
+              <button
+                onClick={() => { setShowRatingModal(false); setIsReviewMode(true); }}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              >
+                Review Solution
+              </button>
+              <button
+                onClick={() => setShowMorePuzzles(true)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              >
+                See More Puzzles
+              </button>
+              <button
+                onClick={loadNextPuzzle}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                disabled={isLoadingNextPuzzle}
+              >
+                {isLoadingNextPuzzle ? 'Loading...' : 'Play Next Puzzle'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -880,6 +1014,37 @@ const PuzzleSolver = () => {
                 Start Over
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for 'See More Puzzles' list */}
+      {showMorePuzzles && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
+            <h3 className="text-lg font-bold mb-4">Choose a Puzzle</h3>
+            <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
+              {otherPuzzles.length === 0 && (
+                <div className="text-gray-500 text-center">No other puzzles available.</div>
+              )}
+              {otherPuzzles.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => handleSelectOtherPuzzle(p)}
+                  className="w-full text-left p-3 border rounded hover:bg-blue-50 focus:outline-none"
+                >
+                  <div className="font-semibold text-gray-900">{p.theme}</div>
+                  <div className="text-sm text-gray-600">{p.gameData?.white} vs {p.gameData?.black}</div>
+                  <div className="text-xs text-gray-400">{p.difficulty ? `${p.difficulty}/5` : ''}</div>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowMorePuzzles(false)}
+              className="mt-4 px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 w-full"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

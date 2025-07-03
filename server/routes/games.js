@@ -215,6 +215,7 @@ router.get('/lichess/game/:gameId', async (req, res) => {
  */
 router.post('/import', async (req, res) => {
   try {
+    const startTime = Date.now();
     const { platform, username, maxGames = 10, maxPuzzles = 5 } = req.body;
     
     if (!platform || !username) {
@@ -254,74 +255,43 @@ router.post('/import', async (req, res) => {
     
     console.log(`📊 Found ${games.length} games, generating puzzles...`);
     
-    // Generate puzzles from the imported games
-    const allPuzzles = [];
-    let processedGames = 0;
-    const startTime = Date.now();
-    
-    // Process games until we have enough puzzles or run out of games
-    for (let gameIndex = 0; gameIndex < games.length; gameIndex++) {
-      const game = games[gameIndex];
-      if (allPuzzles.length >= maxPuzzles) {
-        console.log(`✅ Reached target of ${maxPuzzles} puzzles`);
-        break;
+    // Instead of processing all games, randomly select one from the last 10
+    if (games.length === 0) {
+      return res.status(400).json({ error: 'No games found for this user.' });
+    }
+    // Pick a random game from the list
+    const randomIndex = Math.floor(Math.random() * games.length);
+    const game = games[randomIndex];
+    let puzzleResult;
+    if (platform === 'chess.com' || platform === 'chesscom') {
+      if (!game.pgn) {
+        return res.status(400).json({ error: 'Selected game has no PGN.' });
       }
-      try {
-        // Debug: print the game object and its properties
-        console.log('DEBUG game object:', game);
-        console.log('DEBUG game properties:', Object.keys(game));
-        console.log('DEBUG game.url:', game.url);
-        console.log('DEBUG game.id:', game.id);
-
-        // Check if this is a Chess960 game
-        const isChess960 = game.rules === 'chess960' || game.pgn.includes('[Variant "Chess960"]');
-        if (isChess960) {
-          console.log('♟️ Processing Chess960 game:', game.white?.username || 'Unknown', 'vs', game.black?.username || 'Unknown');
-          // Skip Chess960 games for now as they can cause parsing issues
-          console.log('⚠️ Skipping Chess960 game due to parsing complexity');
-          continue;
-        }
-
-        let puzzleResult;
-        if (platform === 'chess.com' || platform === 'chesscom') {
-          if (!game.pgn) {
-            console.log('⚠️ Skipping game without PGN:', game);
-            continue;
-          }
-          game.platform = 'chess.com';
-          puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(game);
-        } else {
-          puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(`https://lichess.org/${game.id}`);
-        }
-        if (puzzleResult.puzzles && puzzleResult.puzzles.length > 0) {
-          const remainingSlots = maxPuzzles - allPuzzles.length;
-          const puzzlesToAdd = puzzleResult.puzzles.slice(0, remainingSlots);
-          // Save each puzzle to the in-memory store and collect the saved versions
-          for (const puzzle of puzzlesToAdd) {
-            const savedPuzzle = puzzleModel.createPuzzle({
-              ...puzzle,
-              userId: null, // No userId for now
-              gameId: game.id
-            });
-            allPuzzles.push(savedPuzzle);
-          }
-        }
-        processedGames++;
-      } catch (error) {
-        console.error(`Error generating puzzles for game ${game.id}:`, error);
+      game.platform = 'chess.com';
+      puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(game);
+    } else {
+      puzzleResult = await puzzleGenerator.generatePuzzlesFromGame(`https://lichess.org/${game.id}`);
+    }
+    // Save puzzles to the in-memory store and collect the saved versions
+    const allPuzzles = [];
+    if (puzzleResult.puzzles && puzzleResult.puzzles.length > 0) {
+      for (const puzzle of puzzleResult.puzzles) {
+        const savedPuzzle = puzzleModel.createPuzzle({
+          ...puzzle,
+          userId: null, // No userId for now
+          gameId: game.id
+        });
+        allPuzzles.push(savedPuzzle);
       }
     }
-    
     const processingTime = Math.round((Date.now() - startTime) / 1000);
-    console.log(`🧩 Generated ${allPuzzles.length} puzzles from ${processedGames} games in ${processingTime}s`);
-    
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       gamesImported: games.length,
-      gamesProcessed: processedGames,
+      gamesProcessed: 1,
       puzzles: allPuzzles,
       summary: {
-        type: 'bulk',
+        type: 'random-single',
         platform,
         username,
         gamesImported: games.length,
@@ -329,6 +299,7 @@ router.post('/import', async (req, res) => {
         processingTime: `${processingTime}s`
       }
     });
+    return;
     
   } catch (error) {
     console.error('Error importing games:', error);

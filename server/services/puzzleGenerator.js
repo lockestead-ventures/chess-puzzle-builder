@@ -96,18 +96,8 @@ class PuzzleGenerator {
       
       // Sort puzzles by difficulty (evaluation strength)
       const sorted = puzzles.sort((a, b) => Math.abs(b.evaluation) - Math.abs(a.evaluation));
-      // Only keep puzzles with difficulty >= 2
-      const filtered = sorted.filter(p => p.difficulty >= 2);
-      // Only allow one 2-star puzzle (if any)
-      let twoStarIncluded = false;
-      const finalPuzzles = filtered.filter(p => {
-        if (p.difficulty > 2) return true;
-        if (p.difficulty === 2 && !twoStarIncluded) {
-          twoStarIncluded = true;
-          return true;
-        }
-        return false;
-      });
+      // Only keep puzzles with difficulty >= 3 (medium or higher)
+      const finalPuzzles = sorted.filter(p => p.difficulty >= 3);
       return {
         game: transformedGameData,
         puzzles: finalPuzzles,
@@ -181,28 +171,28 @@ class PuzzleGenerator {
       const history = chess.history({ verbose: true });
       
       // Add starting position (after loading PGN to get correct starting position)
-      positions.push({
-        fen: chess.fen(),
-        moveNumber: 0,
-        move: null,
+    positions.push({
+      fen: chess.fen(),
+      moveNumber: 0,
+      move: null,
         isStarting: true,
         isChess960: isChess960
       });
       
       // Reset to starting position and replay moves
-      chess.reset();
-      
-      for (let i = 0; i < history.length; i++) {
-        const move = history[i];
+    chess.reset();
+    
+    for (let i = 0; i < history.length; i++) {
+      const move = history[i];
         try {
-          chess.move(move);
-          
-          positions.push({
-            fen: chess.fen(),
-            moveNumber: i + 1,
-            move: move.san,
-            isStarting: false,
-            piece: move.piece,
+      chess.move(move);
+      
+      positions.push({
+        fen: chess.fen(),
+        moveNumber: i + 1,
+        move: move.san,
+        isStarting: false,
+        piece: move.piece,
             color: move.color,
             isChess960: isChess960
           });
@@ -445,7 +435,11 @@ class PuzzleGenerator {
           const legalMoves = tempChess.moves({ verbose: true });
           const found = legalMoves.find(m => m.san === firstMove);
           if (found) {
-            puzzles.push(puzzle);
+            // --- Assign difficulty using heuristics ---
+            const difficulty = this.scorePuzzleDifficulty(puzzle);
+            puzzle.difficulty = difficulty; // Engine/heuristic-based only
+            puzzle.starRating = difficulty; // Engine/heuristic-based only
+          puzzles.push(puzzle);
           } else {
             console.log(`DEBUG createPuzzles: Skipping puzzle at FEN ${fen} because first move (${firstMove}) is not legal for side to move (${fen.split(' ')[1]})`);
           }
@@ -500,10 +494,10 @@ class PuzzleGenerator {
       }
       
       // Determine tactical theme
-      const theme = this.determineTacticalTheme(analysis, position);
+      const theme = this.determineTacticalTheme(analysis, position, gameData);
       
       // Calculate difficulty
-      const difficulty = this.calculateDifficulty(analysis.evaluation, theme);
+      const difficulty = this.calculateDifficulty(analysis.evaluation, theme, puzzlePosition);
       
       // Recalculate the solution moves for the puzzle position
       let solutionMoves = [];
@@ -676,41 +670,67 @@ class PuzzleGenerator {
 
   /**
    * Determine the tactical theme of the position
+   * Now returns a more descriptive, human-friendly string.
+   * Tries to pull theme from game data if available, else uses heuristics.
    */
-  determineTacticalTheme(analysis, position) {
-    const absEval = Math.abs(analysis.evaluation);
-    
-    // Simple theme detection based on evaluation and position
-    if (absEval >= 5.0) {
-      return 'mate';
-    } else if (absEval >= 3.0) {
-      return 'winning_combination';
-    } else if (absEval >= 2.0) {
-      return 'tactical_advantage';
-    } else if (absEval >= 1.0) {
-      return 'positional_advantage';
-    } else {
-      return 'tactical_opportunity';
+  determineTacticalTheme(analysis, position, gameData) {
+    // Try to pull theme from chess.com or lichess data if available
+    if (gameData && gameData.themes && Array.isArray(gameData.themes) && gameData.themes.length > 0) {
+      // Use the first available theme, or join multiple
+      return gameData.themes.map(t => this.humanizeTheme(t)).join(', ');
     }
+    if (gameData && gameData.pgn && gameData.pgn.includes('[Theme ')) {
+      // Try to extract [Theme "..."] from PGN
+      const match = gameData.pgn.match(/\[Theme "([^"]+)"\]/);
+      if (match && match[1]) return this.humanizeTheme(match[1]);
+    }
+    // Fallback: use evaluation and tactical type
+    const absEval = Math.abs(analysis.evaluation);
+    if (absEval >= 5.0) {
+      return 'Checkmate opportunity (find the mate)';
+    } else if (absEval >= 3.0) {
+      return 'Winning combination (gain decisive material or advantage)';
+    } else if (absEval >= 2.0) {
+      return 'Tactical advantage (win material or create a threat)';
+    } else if (absEval >= 1.0) {
+      return 'Positional advantage (improve your position or restrict opponent)';
+    } else {
+      return 'Tactical opportunity (spot the idea)';
+    }
+  }
+
+  /**
+   * Helper: Convert short theme codes to human-friendly text
+   */
+  humanizeTheme(theme) {
+    const map = {
+      mate: 'Checkmate opportunity',
+      fork: 'Fork tactic',
+      skewer: 'Skewer tactic',
+      pin: 'Pin tactic',
+      double_attack: 'Double attack',
+      discovered_attack: 'Discovered attack',
+      defensive: 'Defensive maneuver',
+      promotion: 'Promotion tactic',
+      zugzwang: 'Zugzwang',
+      stalemate: 'Stalemate resource',
+      perpetual: 'Perpetual check',
+      sacrifice: 'Sacrifice tactic',
+      winning_combination: 'Winning combination',
+      tactical_advantage: 'Tactical advantage',
+      positional_advantage: 'Positional advantage',
+      tactical_opportunity: 'Tactical opportunity',
+      // Add more as needed
+    };
+    return map[theme] || theme.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   }
 
   /**
    * Calculate puzzle difficulty (1-5 scale)
    */
-  calculateDifficulty(evaluation, theme) {
-    const absEval = Math.abs(evaluation);
-    
-    if (theme === 'mate') {
-      return 5;
-    } else if (absEval >= 3.0) {
-      return 4;
-    } else if (absEval >= 2.0) {
-      return 3;
-    } else if (absEval >= 1.5) {
-      return 2;
-    } else {
-      return 1;
-    }
+  calculateDifficulty(evaluation, theme, puzzle) {
+    // Use the new strict scoring function
+    return this.scorePuzzleDifficulty(puzzle);
   }
 
   /**
@@ -885,6 +905,70 @@ class PuzzleGenerator {
    */
   cleanup() {
     this.stockfishService.terminate();
+  }
+
+  // --- Heuristic-based puzzle difficulty scoring (STRICT VERSION) ---
+  scorePuzzleDifficulty(puzzle) {
+    const moves = puzzle.solution && puzzle.solution.moves ? puzzle.solution.moves : [];
+    const evalSwing = Math.abs(puzzle.solution && puzzle.solution.evaluation ? puzzle.solution.evaluation : 0);
+    const firstMove = moves[0] || '';
+    const isSimpleFirstMove = firstMove.includes('x') || firstMove.includes('+');
+    let difficulty = 1; // Default to very easy
+
+    // 5 stars: 6+ moves, eval swing >= 7, first move NOT a capture or check
+    if (moves.length >= 6 && evalSwing >= 7 && !isSimpleFirstMove) {
+      difficulty = 5;
+    // 4 stars: 4-5 moves, eval swing >= 5
+    } else if (moves.length >= 4 && moves.length <= 5 && evalSwing >= 5) {
+      difficulty = 4;
+    // 3 stars: 3+ moves, eval swing >= 3
+    } else if (moves.length >= 3 && evalSwing >= 3) {
+      difficulty = 3;
+    // 2 stars: 2+ moves, eval swing >= 1.5
+    } else if (moves.length >= 2 && evalSwing >= 1.5) {
+      difficulty = 2;
+    }
+
+    // Penalize simple first moves: max 3 stars
+    if (isSimpleFirstMove && difficulty > 3) {
+      difficulty = 3;
+    }
+
+    // Clamp to 1-5
+    return Math.max(1, Math.min(5, difficulty));
+  }
+
+  // --- Motif detection using chess.js ---
+  detectMotif(puzzle) {
+    const moves = puzzle.solution && puzzle.solution.moves ? puzzle.solution.moves : [];
+    if (moves.length === 0 || !puzzle.position) return 'unknown';
+    const chess = new Chess(puzzle.position);
+    const firstMove = moves[0];
+    let motif = 'unknown';
+    // Play the first move
+    const moveObj = chess.move(firstMove, { sloppy: true });
+    if (!moveObj) return 'unknown';
+    // Check for mate
+    if (chess.in_checkmate()) return 'mate';
+    // Check for double check
+    if (chess.in_check() && chess.moves({ verbose: true }).some(m => m.flags.includes('c'))) {
+      motif = 'double_check';
+    }
+    // Check for fork (move attacks two or more pieces)
+    const attacked = chess.SQUARES.filter(sq => {
+      const attackers = chess.attacks(sq);
+      return attackers && attackers.length > 0 && chess.get(sq) && chess.get(sq).color !== chess.turn();
+    });
+    if (attacked.length >= 2) motif = 'fork';
+    // Check for pin/skewer (simple: see if any piece is pinned)
+    // chess.js does not have direct pin detection, so skip for now
+    // Check for discovered attack (move uncovers an attack)
+    // Not trivial in chess.js, so skip for now
+    // If move is not a check/capture, call it 'quiet'
+    if (!moveObj.flags.includes('c') && !moveObj.san.includes('+') && !moveObj.san.includes('x')) {
+      motif = 'quiet';
+    }
+    return motif;
   }
 }
 

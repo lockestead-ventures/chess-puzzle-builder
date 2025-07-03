@@ -262,39 +262,6 @@ const Home = () => {
         }}>
           {progress.details}
         </div>
-
-        {/* Animated Icon */}
-        <div style={{ 
-          fontSize: '18px', 
-          color: '#0066cc',
-          transition: 'all 0.3s ease',
-          animation: progress.stage !== 'complete' ? 'pulse 2s ease-in-out infinite' : 'none',
-          transform: progress.stage !== 'complete' ? 'scale(1)' : 'scale(1.1)'
-        }}>
-          {progress.stage !== 'complete' ? '⏳' : '✅'}
-        </div>
-
-        {/* Estimated Time */}
-        {progress.stage !== 'complete' && (
-          <div style={{ 
-            fontSize: '11px', 
-            color: '#999', 
-            marginTop: '8px',
-            transition: 'all 0.3s ease',
-            fontFamily: 'monospace',
-            opacity: 0.8
-          }}>
-            ETA: {Math.max(1, Math.ceil((100 - progress.percentage) / 12))} min
-          </div>
-        )}
-
-        <style jsx>{`
-          @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.8; transform: scale(1.05); }
-            100% { opacity: 1; transform: scale(1); }
-          }
-        `}</style>
       </div>
     );
   };

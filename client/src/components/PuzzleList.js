@@ -15,17 +15,6 @@ const PuzzleList = ({ puzzles, summary }) => {
     );
   }
 
-  const getDifficultyText = (difficulty) => {
-    if (difficulty <= 2) return 'Easy';
-    if (difficulty <= 4) return 'Medium';
-    if (difficulty <= 6) return 'Hard';
-    return 'Expert';
-  };
-
-  const getDifficultyStars = (difficulty) => {
-    return '★'.repeat(difficulty) + '☆'.repeat(6 - difficulty);
-  };
-
   // Map backend theme to human-friendly label
   const getThemeLabel = (theme) => {
     switch ((theme || '').toLowerCase()) {
@@ -62,9 +51,6 @@ const PuzzleList = ({ puzzles, summary }) => {
             <h4 style={{ margin: 0 }}>
               Puzzle #{index + 1}
             </h4>
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              {getDifficultyText(puzzle.difficulty || 3)} ({getDifficultyStars(puzzle.difficulty || 3)})
-            </div>
           </div>
 
           <div style={{ marginBottom: '10px' }}>
@@ -117,10 +103,7 @@ const PuzzleList = ({ puzzles, summary }) => {
         backgroundColor: '#f0f8ff'
       }}>
         <p style={{ margin: 0, fontSize: '14px' }}>
-          <strong>Total Puzzles:</strong> {puzzles.length} | 
-          <strong> Average Difficulty:</strong> {
-            Math.round(puzzles.reduce((sum, p) => sum + (p.difficulty || 3), 0) / puzzles.length)
-          }/6
+          <strong>Total Puzzles:</strong> {puzzles.length}
         </p>
       </div>
     </div>
