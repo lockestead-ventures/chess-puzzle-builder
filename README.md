@@ -1,15 +1,51 @@
 # Chess Puzzle Builder
 
-A web application that generates personalized chess puzzles from chess.com games using Stockfish engine analysis. Learn from your mistakes and improve your tactical awareness with puzzles based on your actual games.
+A comprehensive chess puzzle platform that generates personalized puzzles from chess.com and lichess games using Stockfish engine analysis. Learn from your mistakes and improve your tactical awareness with puzzles based on your actual games, curated puzzle packs from top players, and a thriving community of chess enthusiasts.
 
 ## 🎯 Features
 
+### Core Puzzle Experience
 - **Smart Analysis**: Uses Stockfish engine to analyze every position and identify tactical opportunities
 - **Personalized Learning**: Puzzles are created from your actual games, making them highly relevant to your playing style
-- **Interactive Solving**: Solve puzzles with immediate feedback and hints
+- **Interactive Solving**: Solve puzzles with immediate feedback, hints, and dynamic explanations
 - **Progress Tracking**: Monitor your improvement with detailed analysis and difficulty ratings
 - **Multiple Themes**: Categorizes puzzles by tactical themes (mate, winning combination, tactical advantage, etc.)
 - **Difficulty Ratings**: 1-5 scale difficulty based on engine evaluation and complexity
+
+### Community & Social Features
+- **Puzzle Packs**: Curated sets from Grandmasters, IMs, and popular streamers
+- **Points System**: Earn points for completed puzzles and compete on global leaderboards
+- **Achievement System**: Unlock badges and milestones as you improve
+- **User-Generated Content**: Create and share your own educational puzzle packs
+
+### Analytics & Progress
+- **ELO Tracking**: Import and track your chess.com and lichess ratings
+- **Performance Insights**: Detailed breakdown of your strengths and weaknesses
+- **Progress Visualization**: Charts and graphs showing your improvement over time
+- **Personalized Recommendations**: Get puzzle suggestions based on your performance patterns
+
+## 💰 Pricing Tiers
+
+### Free Tier
+- **5 puzzles per day** - Perfect for casual practice
+- Basic puzzle solving with hints and explanations
+- Access to community leaderboards
+- Limited analytics and progress tracking
+
+### Pro Tier ($X/month)
+- **Unlimited daily puzzles** - Practice as much as you want
+- **1 tracked profile** - Link your chess.com or lichess account
+- Full puzzle history and performance analytics
+- Access to curated puzzle packs from top players
+- Basic ELO tracking and correlation analysis
+
+### Super Pro Tier ($Y/month)
+- Everything in Pro, plus:
+- **Multiple profile tracking** - Track multiple chess accounts
+- **Advanced analytics** - Detailed performance insights and recommendations
+- **Puzzle pack creation tools** - Create and share your own educational puzzle sets
+- **Priority support** - Get help when you need it
+- **Early access** - Try new features before anyone else
 
 ## 🚀 Quick Start
 
@@ -216,6 +252,39 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 📞 Support
 
 If you have any questions or need help, please open an issue on GitHub or contact us at support@chesspuzzlebuilder.com.
+
+## 📋 Versioning
+
+This project uses **Semantic Versioning (SemVer)** with the format `vX.Y.Z`:
+
+- **v0.X.Y** - Pre-MVP development versions
+- **v1.0.0** - MVP launch (first production release with freemium tiers)
+
+### Version Breakdown
+- **Major (X)**: Breaking changes, major releases (0 = pre-MVP, 1 = MVP+)
+- **Minor (Y)**: New features added (increments with each feature)
+- **Patch (Z)**: Bug fixes and small improvements
+
+### Current Version: `v0.3.0`
+
+**Version History:**
+- `v0.0.1` - Initial setup: Multi-platform chess puzzle builder with authentication
+- `v0.1.0` - UI transformation: Username-focused puzzle builder with text-based UI
+- `v0.2.0` - Puzzle solving system: Hint/solution gating, star rating, roadmap tracking
+- `v0.3.0` - Dynamic puzzle clues: Context-rich, varied descriptions and hints
+
+**Upcoming Milestones:**
+- `v0.4.0` - Enhanced puzzle solving experience
+- `v0.7.0` - User onboarding and freemium foundation
+- `v1.0.0` - MVP launch with puzzle packs and community features
+
+**Examples:**
+- `v0.0.1` - Initial project setup
+- `v0.1.0` - Added user authentication feature
+- `v0.1.1` - Fixed login bug
+- `v0.2.0` - Added puzzle solver
+- `v0.2.1` - Improved error handling
+- `v1.0.0` - MVP launch with freemium tiers
 
 ---
 

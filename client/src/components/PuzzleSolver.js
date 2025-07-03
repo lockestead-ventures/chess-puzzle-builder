@@ -24,6 +24,13 @@ const PuzzleSolver = () => {
   const [showPlayedModal, setShowPlayedModal] = useState(false);
   const [playedDemoFen, setPlayedDemoFen] = useState(null);
   const [isAnimatingPlayedMove, setIsAnimatingPlayedMove] = useState(false);
+  const [moveError, setMoveError] = useState(null);
+  const [showWrongMoveModal, setShowWrongMoveModal] = useState(false);
+  const [wrongMoveData, setWrongMoveData] = useState(null);
+  const [boardKey, setBoardKey] = useState(0); // Force chessboard re-render
+  const [lastMoveHighlight, setLastMoveHighlight] = useState(null); // Highlight last move
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false); // Success animation
+  const [isOpponentMoving, setIsOpponentMoving] = useState(false); // Opponent move indicator
 
   useEffect(() => {
     loadPuzzle();
@@ -39,14 +46,28 @@ const PuzzleSolver = () => {
   }, [puzzleId, puzzle]);
 
   useEffect(() => {
+    console.log('[DEBUG] useEffect triggered - selectedSquare:', selectedSquare, 'chess:', !!chess);
     if (!selectedSquare || !chess) {
+      console.log('[DEBUG] Clearing move previews - no selected square or chess');
       setMovePreviews([]);
       return;
     }
-    const tempChess = new Chess(getBoardFenAtMove(moveNavIndex));
-    const moves = tempChess.moves({ square: selectedSquare, verbose: true });
-    setMovePreviews(moves);
-  }, [selectedSquare, chess, moveNavIndex, puzzle]);
+    
+    try {
+      // Use currentMoveIndex to get the current position
+      const currentPosition = getBoardFenAtMove(currentMoveIndex);
+      console.log('[DEBUG] Getting moves for square', selectedSquare, 'at position:', currentPosition);
+      const tempChess = new Chess(currentPosition);
+      const moves = tempChess.moves({ square: selectedSquare, verbose: true });
+      console.log('[DEBUG] Available moves:', moves);
+      setMovePreviews(moves);
+      setMoveError(null);
+    } catch (error) {
+      console.error('[ERROR] Error getting move previews:', error);
+      setMovePreviews([]);
+      setMoveError('Error loading move previews');
+    }
+  }, [selectedSquare, chess, puzzle, currentMoveIndex]);
 
   const loadPuzzle = async () => {
     setLoading(true);
@@ -57,6 +78,13 @@ const PuzzleSolver = () => {
       if (!response.ok) throw new Error('Failed to load puzzle');
       const data = await response.json();
       if (!data.success || !data.puzzle) throw new Error('Puzzle not found');
+      
+      // Debug logging
+      console.log('[DEBUG] Puzzle loaded:', data.puzzle);
+      console.log('[DEBUG] Puzzle position FEN:', data.puzzle.position);
+      console.log('[DEBUG] Solution moves:', data.puzzle.solution.moves);
+      console.log('[DEBUG] Game context:', data.puzzle.gameContext);
+      
       setPuzzle(data.puzzle);
       const newChess = new Chess(data.puzzle.position);
       setChess(newChess);
@@ -69,24 +97,70 @@ const PuzzleSolver = () => {
 
   const onDrop = (sourceSquare, targetSquare) => {
     try {
-      const move = chess.move({
+      // Use the current board position based on moves made so far
+      const tempChess = new Chess(getBoardFenAtMove(currentMoveIndex));
+      
+      const move = tempChess.move({
         from: sourceSquare,
         to: targetSquare,
         promotion: 'q' // Always promote to queen for simplicity
       });
 
-      if (move === null) return false;
+      if (move === null) {
+        setWrongMoveData({
+          attemptedMove: `${sourceSquare}-${targetSquare}`,
+          correctMove: puzzle.solution.moves[currentMoveIndex],
+          moveNumber: currentMoveIndex + 1,
+          illegal: true
+        });
+        setShowWrongMoveModal(true);
+        setFailedAttempts(failedAttempts + 1);
+        setMoveError('Illegal move attempted');
+        return false;
+      }
 
-      setChess(new Chess(chess.fen()));
+      // Update the chess state with the new position
+      setChess(new Chess(tempChess.fen()));
       setUserMoves([...userMoves, move.san]);
+      
+      // Small delay for smoother visual transition
+      setTimeout(() => {
+        setBoardKey(prev => prev + 1); // Force chessboard re-render
+      }, 50);
       
       // Check if this is the correct move
       const correctMove = puzzle.solution.moves[currentMoveIndex];
+      
+      // Debug logging
+      console.log('[DEBUG] Move made:', move.san);
+      console.log('[DEBUG] Expected move:', correctMove);
+      console.log('[DEBUG] Current move index:', currentMoveIndex);
+      console.log('[DEBUG] Total solution moves:', puzzle.solution.moves.length);
+      console.log('[DEBUG] Current position FEN:', tempChess.fen());
+      
       if (move.san === correctMove) {
+        console.log('[DEBUG] ✅ Correct move!');
         setIsCorrect(true);
         setCurrentMoveIndex(currentMoveIndex + 1);
         setFailedAttempts(0);
         setShowHint(false);
+        
+        // Highlight the move that was just made
+        setLastMoveHighlight({
+          from: sourceSquare,
+          to: targetSquare,
+          timestamp: Date.now()
+        });
+        
+        // Show success animation
+        setShowSuccessAnimation(true);
+        
+        // Clear the highlight and animation after 1 second
+        setTimeout(() => {
+          setLastMoveHighlight(null);
+          setShowSuccessAnimation(false);
+        }, 1000);
+        
         if (currentMoveIndex + 1 >= puzzle.solution.moves.length) {
           // Puzzle solved! Grade performance
           let stars = 3;
@@ -101,17 +175,61 @@ const PuzzleSolver = () => {
           setTimeout(() => {
             setShowRatingModal(true);
           }, 500);
+        } else {
+          // Show "opponent is thinking" first, then auto-play the response
+          setTimeout(() => {
+            setIsOpponentMoving(true);
+            
+            // After showing the thinking indicator, play the move
+            setTimeout(() => {
+              const opponentMove = puzzle.solution.moves[currentMoveIndex + 1];
+              if (opponentMove) {
+                console.log('[DEBUG] Auto-playing opponent move:', opponentMove);
+                setCurrentMoveIndex(currentMoveIndex + 2); // Skip to next player's turn
+                setUserMoves([...userMoves, move.san, opponentMove]);
+                
+                // Check if this completes the puzzle
+                if (currentMoveIndex + 2 >= puzzle.solution.moves.length) {
+                  let stars = 3;
+                  if (showSolution) {
+                    stars = 0;
+                  } else if (showHint || failedAttempts >= 3) {
+                    stars = 1;
+                  } else if (failedAttempts >= 1) {
+                    stars = 2;
+                  }
+                  setStarRating(stars);
+                  setTimeout(() => {
+                    setShowRatingModal(true);
+                  }, 500);
+                }
+                
+                // Clear opponent moving indicator after a short delay
+                setTimeout(() => {
+                  setIsOpponentMoving(false);
+                }, 500);
+              }
+            }, 1200); // Thinking time before opponent moves
+          }, 800); // Delay to show the player's move first
         }
       } else {
-        setIsCorrect(false);
+        console.log('[DEBUG] ❌ Wrong move!');
+        // Wrong move - show modal with options
+        setWrongMoveData({
+          attemptedMove: move.san,
+          correctMove: correctMove,
+          moveNumber: currentMoveIndex + 1,
+          illegal: false
+        });
+        setShowWrongMoveModal(true);
         setFailedAttempts(failedAttempts + 1);
-        setTimeout(() => {
-          setIsCorrect(null);
-        }, 2000);
       }
       setShowHint(false); // Hide hint after any move
+      setMoveError(null); // Clear any previous move errors
       return true;
     } catch (error) {
+      console.error('[ERROR] Error in onDrop:', error);
+      setMoveError('Invalid move attempted');
       return false;
     }
   };
@@ -127,6 +245,36 @@ const PuzzleSolver = () => {
     setShowHint(false);
     setStarRating(null);
     setShowRatingModal(false);
+    setShowWrongMoveModal(false);
+    setWrongMoveData(null);
+    setBoardKey(0); // Reset board key
+    setIsOpponentMoving(false); // Reset opponent moving state
+  };
+
+  const handleWrongMoveRetry = () => {
+    // Reset to the beginning of the puzzle
+    const newChess = new Chess(puzzle.position);
+    setChess(newChess);
+    setUserMoves([]);
+    setCurrentMoveIndex(0);
+    setShowWrongMoveModal(false);
+    setWrongMoveData(null);
+  };
+
+  const handleWrongMoveContinue = () => {
+    // Continue from the last successful move (undo the wrong move)
+    const newChess = new Chess(puzzle.position);
+    // Replay all correct moves up to currentMoveIndex
+    for (let i = 0; i < currentMoveIndex; i++) {
+      const result = newChess.move(puzzle.solution.moves[i], { sloppy: true });
+      if (!result) {
+        console.warn(`[WARNING] Failed to replay move ${puzzle.solution.moves[i]} in handleWrongMoveContinue`);
+      }
+    }
+    setChess(newChess);
+    setUserMoves(puzzle.solution.moves.slice(0, currentMoveIndex));
+    setShowWrongMoveModal(false);
+    setWrongMoveData(null);
   };
 
   const handleShowHint = () => {
@@ -139,12 +287,27 @@ const PuzzleSolver = () => {
 
   // Highlight the piece to move for the next correct move
   let customSquareStyles = {};
+  
+  // Highlight last move made
+  if (lastMoveHighlight) {
+    customSquareStyles[lastMoveHighlight.from] = {
+      boxShadow: '0 0 0 4px #10b981, 0 0 10px 4px #6ee7b7',
+      background: '#d1fae5',
+      transition: 'all 0.3s ease-in-out'
+    };
+    customSquareStyles[lastMoveHighlight.to] = {
+      boxShadow: '0 0 0 4px #10b981, 0 0 10px 4px #6ee7b7',
+      background: '#d1fae5',
+      transition: 'all 0.3s ease-in-out'
+    };
+  }
+  
   // Highlight for hint
   if (showHint && puzzle && chess) {
     const correctMove = puzzle.solution.moves[currentMoveIndex];
     if (correctMove) {
       try {
-        const tempChess = new Chess(chess.fen());
+        const tempChess = new Chess(getBoardFenAtMove(currentMoveIndex));
         const moveObj = tempChess.move(correctMove, { sloppy: true });
         if (moveObj && moveObj.from) {
           customSquareStyles[moveObj.from] = {
@@ -178,29 +341,49 @@ const PuzzleSolver = () => {
 
   const getBoardFenAtMove = (moveIndex) => {
     if (!puzzle) return chess.fen();
-    const tempChess = new Chess(puzzle.position);
-    // Debug: print the full move list
-    if (puzzle.solution && puzzle.solution.moves) {
-      console.log('[DEBUG] Full solution.moves:', puzzle.solution.moves);
-    }
-    // If moveIndex is 0, show the position before the last move (if available)
-    if (moveIndex === 0) {
-      // If there is a lastMove in puzzle, play all moves except the last one
-      if (puzzle.lastMove && puzzle.moveHistory) {
-        for (let i = 0; i < puzzle.moveHistory.length - 1; i++) {
-          console.log(`[DEBUG] About to play move: ${puzzle.moveHistory[i]} on FEN: ${tempChess.fen()}`);
-          tempChess.move(puzzle.moveHistory[i], { sloppy: true });
-        }
+    
+    try {
+      // Start from the puzzle position (which is already set to the correct starting point)
+      const tempChess = new Chess(puzzle.position);
+      
+      // Debug: log the puzzle position and move index
+      console.log('[DEBUG] getBoardFenAtMove - puzzle.position:', puzzle.position);
+      console.log('[DEBUG] getBoardFenAtMove - moveIndex:', moveIndex);
+      console.log('[DEBUG] getBoardFenAtMove - currentMoveIndex:', currentMoveIndex);
+      
+      // If moveIndex is 0, show the puzzle position as-is
+      if (moveIndex === 0) {
+        console.log('[DEBUG] getBoardFenAtMove - returning puzzle position:', tempChess.fen());
         return tempChess.fen();
       }
+      
+      // Play solution moves up to moveIndex
+      const movesToPlay = Math.min(moveIndex, puzzle.solution.moves.length);
+      console.log('[DEBUG] getBoardFenAtMove - movesToPlay:', movesToPlay);
+      console.log('[DEBUG] getBoardFenAtMove - solution moves:', puzzle.solution.moves);
+      
+      for (let i = 0; i < movesToPlay; i++) {
+        const move = puzzle.solution.moves[i];
+        console.log(`[DEBUG] getBoardFenAtMove - playing move ${i}: ${move}`);
+        
+        // Try to play the move directly - chess.js will handle validation
+        const result = tempChess.move(move, { sloppy: true });
+        if (!result) {
+          // If the move fails, log the legal moves for debugging
+          const legalMoves = tempChess.moves();
+          console.warn(`[WARNING] Failed to play solution move ${move} at position ${tempChess.fen()}. Legal moves:`, legalMoves);
+          // Return the current position instead of crashing
+          return tempChess.fen();
+        }
+      }
+      
+      console.log('[DEBUG] getBoardFenAtMove - final position:', tempChess.fen());
       return tempChess.fen();
+    } catch (error) {
+      console.error('[ERROR] Error in getBoardFenAtMove:', error);
+      // Return the original puzzle position as fallback
+      return puzzle.position;
     }
-    // Play moves up to moveIndex
-    for (let i = 0; i < moveIndex && i < puzzle.solution.moves.length; i++) {
-      console.log(`[DEBUG] About to play move: ${puzzle.solution.moves[i]} on FEN: ${tempChess.fen()}`);
-      tempChess.move(puzzle.solution.moves[i], { sloppy: true });
-    }
-    return tempChess.fen();
   };
 
   const handleNavBack = () => {
@@ -212,28 +395,34 @@ const PuzzleSolver = () => {
 
   // Handle square click for move preview
   const handleSquareClick = (square) => {
+    console.log('[DEBUG] Square clicked:', square);
+    console.log('[DEBUG] Currently selected square:', selectedSquare);
+    console.log('[DEBUG] Move previews:', movePreviews);
+    console.log('[DEBUG] Current move index:', currentMoveIndex);
+    
     // If a piece is selected and user clicks a legal destination, make the move
     if (
       selectedSquare &&
       movePreviews.length > 0 &&
-      moveNavIndex === currentMoveIndex &&
       movePreviews.some((m) => m.to === square)
     ) {
+      console.log('[DEBUG] Making move from', selectedSquare, 'to', square);
       onDrop(selectedSquare, square);
       setSelectedSquare(null);
       return;
     }
     // Otherwise, select/deselect piece as before
     if (selectedSquare === square) {
+      console.log('[DEBUG] Deselecting piece on', square);
       setSelectedSquare(null);
     } else {
-      // Only allow selecting your own pieces at the current move index
-      const tempChess = new Chess(getBoardFenAtMove(moveNavIndex));
+      // Allow selecting any piece that exists on the square
+      // Use currentMoveIndex to get the current position
+      const tempChess = new Chess(getBoardFenAtMove(currentMoveIndex));
       const piece = tempChess.get(square);
-      if (!piece) return;
-      const isWhite = piece.color === 'w';
-      const orientation = getBoardOrientation();
-      if ((orientation === 'white' && isWhite) || (orientation === 'black' && !isWhite)) {
+      console.log('[DEBUG] Piece on', square, ':', piece);
+      if (piece) {
+        console.log('[DEBUG] Selecting piece on', square);
         setSelectedSquare(square);
       }
     }
@@ -374,17 +563,47 @@ const PuzzleSolver = () => {
               </button>
             </div>
             <div className="chess-board">
+              {/* Opponent Thinking Indicator */}
+              {isOpponentMoving && (
+                <div className="mb-3 p-3 bg-gray-100 border border-gray-200 rounded-lg text-center">
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                    <span className="text-gray-700 font-medium">Opponent is thinking...</span>
+                  </div>
+                </div>
+              )}
+              
               <div style={{ position: 'relative' }}>
+                {/* Success Animation Overlay */}
+                {showSuccessAnimation && (
+                  <div 
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: 'radial-gradient(circle, rgba(16, 185, 129, 0.1) 0%, transparent 70%)',
+                      pointerEvents: 'none',
+                      zIndex: 10,
+                      animation: 'pulse 1s ease-out'
+                    }}
+                  />
+                )}
+                
+
                 <Chessboard
-                  position={getBoardFenAtMove(moveNavIndex)}
+                  key={boardKey}
+                  position={getBoardFenAtMove(currentMoveIndex)}
                   onPieceDrop={onDrop}
                   boardOrientation={getBoardOrientation()}
                   customBoardStyle={{
                     borderRadius: '4px',
                     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
                   }}
+
                   customSquareStyles={customSquareStyles}
-                  arePiecesDraggable={moveNavIndex === currentMoveIndex}
+                  arePiecesDraggable={true}
                   onSquareClick={handleSquareClick}
                   renderCustomSquareContents={(square) => {
                     // Show sword icon if this square is a capture in move preview
@@ -413,6 +632,16 @@ const PuzzleSolver = () => {
               )}
               <span className={isCorrect ? 'text-green-800' : 'text-red-800'}>
                 {isCorrect ? 'Correct move!' : 'Incorrect move. Try again.'}
+              </span>
+            </div>
+          )}
+
+          {/* Move Error Display */}
+          {moveError && (
+            <div className="p-4 rounded-lg flex items-center bg-orange-50 border border-orange-200">
+              <XCircle className="h-5 w-5 text-orange-600 mr-2" />
+              <span className="text-orange-800">
+                {moveError}
               </span>
             </div>
           )}
@@ -611,6 +840,45 @@ const PuzzleSolver = () => {
                 <span>This is what was played in the real game:</span>
                 <span className="ml-2 font-mono font-bold">{puzzle && puzzle.gameContext && puzzle.gameContext.originalMove}</span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wrong Move Modal */}
+      {showWrongMoveModal && wrongMoveData && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50">
+          <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
+            <div className="mb-6">
+              <XCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Wrong Move!</h3>
+              {wrongMoveData.illegal ? (
+                <p className="text-gray-600 mb-4">
+                  <span className="font-mono font-bold text-red-600">{wrongMoveData.attemptedMove}</span> is not a legal move in this position.
+                </p>
+              ) : (
+                <p className="text-gray-600 mb-4">
+                  You played <span className="font-mono font-bold text-red-600">{wrongMoveData.attemptedMove}</span>, 
+                  but the correct move was <span className="font-mono font-bold text-green-600">{wrongMoveData.correctMove}</span>
+                </p>
+              )}
+              <p className="text-sm text-gray-500 mb-2">
+                Move {wrongMoveData.moveNumber} of {puzzle?.solution?.moves?.length}
+              </p>
+            </div>
+            <div className="flex justify-center space-x-4">
+              <button
+                onClick={handleWrongMoveContinue}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Continue from Last Move
+              </button>
+              <button
+                onClick={handleWrongMoveRetry}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+              >
+                Start Over
+              </button>
             </div>
           </div>
         </div>

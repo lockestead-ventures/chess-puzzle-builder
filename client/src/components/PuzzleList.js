@@ -71,15 +71,15 @@ const PuzzleList = ({ puzzles, summary }) => {
             <strong>Theme:</strong> {getThemeLabel(puzzle.theme)}
           </div>
 
-          {puzzle.explanation && (
+          {puzzle.explanation && puzzle.explanation.description && (
             <div style={{ marginBottom: '10px', fontSize: '14px' }}>
-              <strong>Description:</strong> {puzzle.explanation}
+              <strong>Description:</strong> {puzzle.explanation.description}
             </div>
           )}
 
-          {puzzle.clue && (
+          {puzzle.explanation && puzzle.explanation.clue && (
             <div style={{ marginBottom: '10px', fontSize: '12px', color: '#666' }}>
-              <strong>Clue:</strong> {puzzle.clue}
+              <strong>Clue:</strong> {puzzle.explanation.clue}
             </div>
           )}
 

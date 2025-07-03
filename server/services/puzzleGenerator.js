@@ -481,17 +481,8 @@ class PuzzleGenerator {
       
       // Determine the last move played before the puzzle position
       let lastMove = null;
-      try {
-        const chess = puzzlePosition.isChess960 ? new Chess({ variant: 'chess960' }) : new Chess();
-        chess.loadPgn(gameData.pgn);
-        const history = chess.history();
-        const movesBack = Math.min(2, position.moveNumber);
-        const targetMoveNumber = position.moveNumber - movesBack;
-        if (targetMoveNumber > 0 && history[targetMoveNumber - 1]) {
-          lastMove = history[targetMoveNumber - 1];
-        }
-      } catch (e) {
-        lastMove = null;
+      if (puzzlePosition.moveHistory && puzzlePosition.moveHistory.length > 0) {
+        lastMove = puzzlePosition.moveHistory[puzzlePosition.moveHistory.length - 1];
       }
       
       // Determine tactical theme
@@ -500,17 +491,60 @@ class PuzzleGenerator {
       // Calculate difficulty
       const difficulty = this.calculateDifficulty(analysis.evaluation, theme);
       
+      // Recalculate the solution moves for the puzzle position
+      let solutionMoves = [];
+      let solutionEvaluation = analysis.evaluation;
+      
+      try {
+        const puzzleChess = puzzlePosition.isChess960 ? new Chess({ variant: 'chess960' }) : new Chess();
+        puzzleChess.load(puzzlePosition.fen);
+        
+        // Get the moves that lead from the puzzle position to the tactical position
+        const movesToTactical = [];
+        const tacticalChess = puzzlePosition.isChess960 ? new Chess({ variant: 'chess960' }) : new Chess();
+        tacticalChess.load(position.fen);
+        
+        // Find the moves that transform puzzle position to tactical position
+        // We need to find the moves that were played between the puzzle position and the tactical position
+        const movesBack = Math.min(2, position.moveNumber);
+        const targetMoveNumber = position.moveNumber - movesBack;
+        
+        // Get the moves that were played after the puzzle position
+        const chess = puzzlePosition.isChess960 ? new Chess({ variant: 'chess960' }) : new Chess();
+        chess.loadPgn(gameData.pgn);
+        const history = chess.history();
+        
+        // The moves from puzzle position to tactical position
+        for (let i = targetMoveNumber; i < position.moveNumber && i < history.length; i++) {
+          movesToTactical.push(history[i]);
+        }
+        
+        // The solution is the moves that lead to the tactical position, plus the best move from there
+        solutionMoves = [...movesToTactical, analysis.bestMove, ...analysis.pv.slice(1, 3)];
+        
+        console.log('DEBUG createPuzzleFromPosition: puzzle position FEN:', puzzlePosition.fen);
+        console.log('DEBUG createPuzzleFromPosition: moves to tactical:', movesToTactical);
+        console.log('DEBUG createPuzzleFromPosition: best move from tactical:', analysis.bestMove);
+        console.log('DEBUG createPuzzleFromPosition: full solution moves:', solutionMoves);
+        
+      } catch (error) {
+        console.error('Error recalculating solution moves:', error);
+        // Fallback to original solution
+        solutionMoves = [analysis.bestMove, ...analysis.pv.slice(1, 3)];
+      }
+      
       // Generate explanation and clue for the puzzle
       const puzzleObj = {
         id: `puzzle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         position: puzzlePosition.fen,
         solution: {
-          moves: [analysis.bestMove, ...analysis.pv.slice(1, 3)],
-          evaluation: analysis.evaluation
+          moves: solutionMoves,
+          evaluation: solutionEvaluation
         },
         theme,
         difficulty,
         lastMove,
+        moveHistory: puzzlePosition.moveHistory || [], // Include the truncated move history
         gameContext: {
           moveNumber: position.moveNumber,
           originalMove: position.move,
@@ -583,11 +617,11 @@ class PuzzleGenerator {
       chess.reset();
       
       // Debug: print the move history and target move number
-      console.log('DEBUG createPuzzlePosition: move history:', history);
       console.log('DEBUG createPuzzlePosition: targetMoveNumber:', targetMoveNumber);
       console.log('DEBUG createPuzzlePosition: isChess960:', isChess960);
       
-      // Replay moves up to the target position
+      // Replay moves up to the target position and collect the truncated history
+      const truncatedHistory = [];
       for (let i = 0; i < targetMoveNumber && i < history.length; i++) {
         const move = history[i];
         if (move) {
@@ -597,6 +631,7 @@ class PuzzleGenerator {
               console.error('DEBUG createPuzzlePosition: Invalid move at index', i, 'move:', move, 'FEN:', chess.fen());
               break;
             }
+            truncatedHistory.push(move);
           } catch (moveError) {
             console.error('DEBUG createPuzzlePosition: Error replaying move', i, 'move:', move, 'error:', moveError.message);
             break;
@@ -604,9 +639,12 @@ class PuzzleGenerator {
         }
       }
       
+      console.log('DEBUG createPuzzlePosition: truncated move history:', truncatedHistory);
+      
       return {
         fen: chess.fen(),
         moveNumber: targetMoveNumber,
+        moveHistory: truncatedHistory, // Return the truncated history
         isChess960: isChess960
       };
     } catch (error) {

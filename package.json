@@ -8,7 +8,9 @@
     "server": "cd server && npm run dev",
     "client": "cd client && npm start",
     "build": "cd client && npm run build",
-    "install-all": "npm install && cd server && npm install && cd ../client && npm install"
+    "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "start": "./start-servers.sh",
+    "stop": "pkill -f 'node.*index.js' && pkill -f 'react-scripts'"
   },
   "keywords": ["chess", "puzzles", "learning", "tactics"],
   "author": "Chess Puzzle Builder",

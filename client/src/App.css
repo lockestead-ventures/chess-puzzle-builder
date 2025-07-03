@@ -87,4 +87,29 @@
 @keyframes errorFlash {
   0%, 100% { background-color: transparent; }
   50% { background-color: rgba(239, 68, 68, 0.2); }
+}
+
+/* Pulse animation for success feedback */
+@keyframes pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+}
+
+/* Smooth transitions for chess pieces */
+.chess-board .react-chessboard {
+  transition: all 0.2s ease-in-out;
+}
+
+.chess-board .react-chessboard * {
+  transition: all 0.2s ease-in-out;
 } 
