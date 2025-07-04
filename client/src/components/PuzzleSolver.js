@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { ArrowLeft, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, Target, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const PuzzleSolver = () => {
   const { puzzleId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [puzzle, setPuzzle] = useState(null);
   const [chess, setChess] = useState(new Chess());
   const [userMoves, setUserMoves] = useState([]);
@@ -35,7 +37,13 @@ const PuzzleSolver = () => {
   const [isLoadingNextPuzzle, setIsLoadingNextPuzzle] = useState(false);
   const [otherPuzzles, setOtherPuzzles] = useState([]);
   const [hasLoadedOtherPuzzles, setHasLoadedOtherPuzzles] = useState(false);
+  const [hasInteractedWithBoard, setHasInteractedWithBoard] = useState(false);
   const [showMorePuzzles, setShowMorePuzzles] = useState(false);
+  
+  // New state for managing puzzle collection
+  const [puzzleCollection, setPuzzleCollection] = useState(null);
+  const [currentPuzzleIndex, setCurrentPuzzleIndex] = useState(0);
+  const [summary, setSummary] = useState(null);
 
   useEffect(() => {
     loadPuzzle();
@@ -51,9 +59,7 @@ const PuzzleSolver = () => {
   }, [puzzleId, puzzle]);
 
   useEffect(() => {
-    console.log('[DEBUG] useEffect triggered - selectedSquare:', selectedSquare, 'chess:', !!chess);
     if (!selectedSquare || !chess) {
-      console.log('[DEBUG] Clearing move previews - no selected square or chess');
       setMovePreviews([]);
       return;
     }
@@ -61,10 +67,8 @@ const PuzzleSolver = () => {
     try {
       // Use currentMoveIndex to get the current position
       const currentPosition = getBoardFenAtMove(currentMoveIndex);
-      console.log('[DEBUG] Getting moves for square', selectedSquare, 'at position:', currentPosition);
       const tempChess = new Chess(currentPosition);
       const moves = tempChess.moves({ square: selectedSquare, verbose: true });
-      console.log('[DEBUG] Available moves:', moves);
       setMovePreviews(moves);
       setMoveError(null);
     } catch (error) {
@@ -77,24 +81,78 @@ const PuzzleSolver = () => {
   const loadPuzzle = async () => {
     setLoading(true);
     setError(null);
+    
     try {
-      // Fetch the real puzzle from the backend
+      // First, try to get puzzles from navigation state
+      let puzzles = null;
+      let puzzleIndex = 0;
+      let puzzleSummary = null;
+      
+      if (location.state && location.state.puzzles) {
+        console.log('[DEBUG] Loading puzzle from navigation state, puzzleId:', puzzleId);
+        puzzles = location.state.puzzles;
+        puzzleIndex = location.state.currentPuzzleIndex || 0;
+        puzzleSummary = location.state.summary;
+      } else {
+        // Try to get from localStorage as fallback
+        const storedPuzzles = localStorage.getItem('currentPuzzles');
+        const storedIndex = localStorage.getItem('currentPuzzleIndex');
+        
+        if (storedPuzzles && storedIndex) {
+          console.log('[DEBUG] Loading puzzle from localStorage, puzzleId:', puzzleId);
+          puzzles = JSON.parse(storedPuzzles);
+          puzzleIndex = parseInt(storedIndex);
+        }
+      }
+      
+      if (puzzles && puzzles.length > 0) {
+        // Use the puzzle collection
+        setPuzzleCollection(puzzles);
+        setCurrentPuzzleIndex(puzzleIndex);
+        setSummary(puzzleSummary);
+        
+        // Find the specific puzzle by ID or index
+        let targetPuzzle = null;
+        if (puzzleId) {
+          // Try to find by ID first
+          targetPuzzle = puzzles.find(p => p.id === puzzleId);
+          if (!targetPuzzle) {
+            // Fallback to index
+            const index = parseInt(puzzleId);
+            if (!isNaN(index) && index >= 0 && index < puzzles.length) {
+              targetPuzzle = puzzles[index];
+              puzzleIndex = index;
+            }
+          }
+        }
+        
+        if (!targetPuzzle) {
+          // Use the current puzzle index
+          targetPuzzle = puzzles[puzzleIndex];
+        }
+        
+        if (targetPuzzle) {
+          setPuzzle(targetPuzzle);
+          const newChess = new Chess(targetPuzzle.position);
+          setChess(newChess);
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Fallback: fetch from backend
+      console.log('[DEBUG] Fetching puzzle from backend, puzzleId:', puzzleId);
       const response = await fetch(`/api/puzzles/${puzzleId}`);
       if (!response.ok) throw new Error('Failed to load puzzle');
       const data = await response.json();
       if (!data.success || !data.puzzle) throw new Error('Puzzle not found');
-      
-      // Debug logging
-      console.log('[DEBUG] Puzzle loaded:', data.puzzle);
-      console.log('[DEBUG] Puzzle position FEN:', data.puzzle.position);
-      console.log('[DEBUG] Solution moves:', data.puzzle.solution.moves);
-      console.log('[DEBUG] Game context:', data.puzzle.gameContext);
       
       setPuzzle(data.puzzle);
       const newChess = new Chess(data.puzzle.position);
       setChess(newChess);
       setLoading(false);
     } catch (err) {
+      console.error('[ERROR] Failed to load puzzle:', err);
       setError('Failed to load puzzle');
       setLoading(false);
     }
@@ -136,15 +194,7 @@ const PuzzleSolver = () => {
       // Check if this is the correct move
       const correctMove = puzzle.solution.moves[currentMoveIndex];
       
-      // Debug logging
-      console.log('[DEBUG] Move made:', move.san);
-      console.log('[DEBUG] Expected move:', correctMove);
-      console.log('[DEBUG] Current move index:', currentMoveIndex);
-      console.log('[DEBUG] Total solution moves:', puzzle.solution.moves.length);
-      console.log('[DEBUG] Current position FEN:', tempChess.fen());
-      
       if (move.san === correctMove) {
-        console.log('[DEBUG] ✅ Correct move!');
         setIsCorrect(true);
         setCurrentMoveIndex(currentMoveIndex + 1);
         setFailedAttempts(0);
@@ -189,7 +239,6 @@ const PuzzleSolver = () => {
             setTimeout(() => {
               const opponentMove = puzzle.solution.moves[currentMoveIndex + 1];
               if (opponentMove) {
-                console.log('[DEBUG] Auto-playing opponent move:', opponentMove);
                 setCurrentMoveIndex(currentMoveIndex + 2); // Skip to next player's turn
                 setUserMoves([...userMoves, move.san, opponentMove]);
                 
@@ -218,7 +267,6 @@ const PuzzleSolver = () => {
           }, 800); // Delay to show the player's move first
         }
       } else {
-        console.log('[DEBUG] ❌ Wrong move!');
         // Wrong move - show modal with options
         setWrongMoveData({
           attemptedMove: move.san,
@@ -360,25 +408,16 @@ const PuzzleSolver = () => {
       // Start from the puzzle position (which is already set to the correct starting point)
       const tempChess = new Chess(puzzle.position);
       
-      // Debug: log the puzzle position and move index
-      console.log('[DEBUG] getBoardFenAtMove - puzzle.position:', puzzle.position);
-      console.log('[DEBUG] getBoardFenAtMove - moveIndex:', moveIndex);
-      console.log('[DEBUG] getBoardFenAtMove - currentMoveIndex:', currentMoveIndex);
-      
       // If moveIndex is 0, show the puzzle position as-is
       if (moveIndex === 0) {
-        console.log('[DEBUG] getBoardFenAtMove - returning puzzle position:', tempChess.fen());
         return tempChess.fen();
       }
       
       // Play solution moves up to moveIndex
       const movesToPlay = Math.min(moveIndex, puzzle.solution.moves.length);
-      console.log('[DEBUG] getBoardFenAtMove - movesToPlay:', movesToPlay);
-      console.log('[DEBUG] getBoardFenAtMove - solution moves:', puzzle.solution.moves);
       
       for (let i = 0; i < movesToPlay; i++) {
         const move = puzzle.solution.moves[i];
-        console.log(`[DEBUG] getBoardFenAtMove - playing move ${i}: ${move}`);
         
         // Try to play the move directly - chess.js will handle validation
         const result = tempChess.move(move, { sloppy: true });
@@ -391,7 +430,6 @@ const PuzzleSolver = () => {
         }
       }
       
-      console.log('[DEBUG] getBoardFenAtMove - final position:', tempChess.fen());
       return tempChess.fen();
     } catch (error) {
       console.error('[ERROR] Error in getBoardFenAtMove:', error);
@@ -409,10 +447,10 @@ const PuzzleSolver = () => {
 
   // Handle square click for move preview
   const handleSquareClick = (square) => {
-    console.log('[DEBUG] Square clicked:', square);
-    console.log('[DEBUG] Currently selected square:', selectedSquare);
-    console.log('[DEBUG] Move previews:', movePreviews);
-    console.log('[DEBUG] Current move index:', currentMoveIndex);
+    // Mark that user has interacted with the board (for triggering puzzle generation)
+    if (!hasInteractedWithBoard) {
+      setHasInteractedWithBoard(true);
+    }
     
     // If a piece is selected and user clicks a legal destination, make the move
     if (
@@ -420,23 +458,19 @@ const PuzzleSolver = () => {
       movePreviews.length > 0 &&
       movePreviews.some((m) => m.to === square)
     ) {
-      console.log('[DEBUG] Making move from', selectedSquare, 'to', square);
       onDrop(selectedSquare, square);
       setSelectedSquare(null);
       return;
     }
     // Otherwise, select/deselect piece as before
     if (selectedSquare === square) {
-      console.log('[DEBUG] Deselecting piece on', square);
       setSelectedSquare(null);
     } else {
       // Allow selecting any piece that exists on the square
       // Use currentMoveIndex to get the current position
       const tempChess = new Chess(getBoardFenAtMove(currentMoveIndex));
       const piece = tempChess.get(square);
-      console.log('[DEBUG] Piece on', square, ':', piece);
       if (piece) {
-        console.log('[DEBUG] Selecting piece on', square);
         setSelectedSquare(square);
       }
     }
@@ -485,36 +519,36 @@ const PuzzleSolver = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showPlayedModal]);
 
-  // Enhanced lazy loading: generate more puzzles on first move, then fetch others
+  // Enhanced lazy loading: generate more puzzles on first chessboard interaction, then fetch others
   useEffect(() => {
     if (
-      userMoves.length === 1 &&
+      hasInteractedWithBoard &&
       !hasLoadedOtherPuzzles &&
       puzzle && puzzle.id
     ) {
-      // Get username and platform from localStorage (or context/props)
+      console.log('[DEBUG] Triggering puzzle generation on first board interaction');
       const username = localStorage.getItem('username');
       const platform = localStorage.getItem('platform');
-      // Trigger backend to generate more puzzles for this user/platform
       fetch(`/api/puzzles/generate-more?username=${encodeURIComponent(username)}&platform=${encodeURIComponent(platform)}`)
         .then(res => res.json())
-        .then(() => {
-          // After generation, fetch the new list of puzzles
-          fetch(`/api/puzzles/others?exclude=${puzzle.id}`)
-            .then(res => res.json())
-            .then(data => {
-              if (data.success && Array.isArray(data.puzzles)) {
-                setOtherPuzzles(data.puzzles);
-              }
-              setHasLoadedOtherPuzzles(true);
-            })
-            .catch(() => setHasLoadedOtherPuzzles(true));
+        .then(data => {
+          return fetch(`/api/puzzles/others?exclude=${puzzle.id}`);
         })
-        .catch(() => setHasLoadedOtherPuzzles(true));
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.puzzles)) {
+            setOtherPuzzles(data.puzzles);
+          }
+          setHasLoadedOtherPuzzles(true);
+        })
+        .catch((error) => {
+          console.error('[ERROR] Error in puzzle generation:', error);
+          setHasLoadedOtherPuzzles(true);
+        });
     }
-  }, [userMoves, hasLoadedOtherPuzzles, puzzle]);
+  }, [hasInteractedWithBoard, hasLoadedOtherPuzzles, puzzle]);
 
-  // Update loadNextPuzzle to use preloaded puzzles if available
+  // Update loadNextPuzzle to randomly select from puzzle collection
   const loadNextPuzzle = async () => {
     setIsLoadingNextPuzzle(true);
     setShowRatingModal(false);
@@ -542,24 +576,51 @@ const PuzzleSolver = () => {
     setPuzzle(null);
     setLoading(true);
     setError(null);
+    
     try {
       let nextPuzzle = null;
-      if (otherPuzzles.length > 0) {
+      
+      // First, try to use puzzle collection (random selection)
+      if (puzzleCollection && puzzleCollection.length > 0) {
+        console.log('[DEBUG] Loading next puzzle from collection, current index:', currentPuzzleIndex, 'total puzzles:', puzzleCollection.length);
+        // Get remaining puzzles (exclude the current one)
+        const remainingPuzzles = puzzleCollection.filter((_, index) => index !== currentPuzzleIndex);
+        
+        if (remainingPuzzles.length > 0) {
+          // Randomly select from remaining puzzles
+          const randomIndex = Math.floor(Math.random() * remainingPuzzles.length);
+          nextPuzzle = remainingPuzzles[randomIndex];
+          
+          // Find the index of the selected puzzle in the original collection
+          const newIndex = puzzleCollection.findIndex(p => p.id === nextPuzzle.id);
+          setCurrentPuzzleIndex(newIndex);
+        } else {
+          // If no remaining puzzles, cycle back to the first one
+          nextPuzzle = puzzleCollection[0];
+          setCurrentPuzzleIndex(0);
+        }
+      } else if (otherPuzzles.length > 0) {
+        // Fallback to other puzzles
         nextPuzzle = otherPuzzles[0];
         setOtherPuzzles(otherPuzzles.slice(1));
       } else {
-        // Fallback: fetch a new random puzzle from the backend
-        const response = await fetch('/api/puzzles/random');
+        // Final fallback: fetch a new random puzzle from the backend
+        const username = localStorage.getItem('username');
+        const platform = localStorage.getItem('platform');
+        const response = await fetch(`/api/puzzles/random?username=${encodeURIComponent(username)}&platform=${encodeURIComponent(platform)}`);
         if (!response.ok) throw new Error('Failed to load next puzzle');
         const data = await response.json();
         if (!data.success || !data.puzzle) throw new Error('No more puzzles available');
         nextPuzzle = data.puzzle;
       }
+      
       setPuzzle(nextPuzzle);
       setChess(new Chess(nextPuzzle.position));
       setLoading(false);
       setHasLoadedOtherPuzzles(false); // Reset for next puzzle
+      setHasInteractedWithBoard(false); // Reset for next puzzle
     } catch (err) {
+      console.error('[ERROR] Failed to load next puzzle:', err);
       setError('Failed to load next puzzle');
       setLoading(false);
     }
@@ -591,6 +652,19 @@ const PuzzleSolver = () => {
     setIsOpponentMoving(false);
     setSelectedSquare(null);
     setMovePreviews([]);
+    
+    // If we have a puzzle collection, find the index of the selected puzzle
+    if (puzzleCollection && puzzleCollection.length > 0) {
+      // Use originalIndex if available (from filtered list), otherwise find by ID
+      const puzzleIndex = puzzle.originalIndex !== undefined 
+        ? puzzle.originalIndex 
+        : puzzleCollection.findIndex(p => p.id === puzzle.id);
+      
+      if (puzzleIndex !== -1) {
+        setCurrentPuzzleIndex(puzzleIndex);
+      }
+    }
+    
     setPuzzle(puzzle);
     setChess(new Chess(puzzle.position));
     setLoading(false);
@@ -626,6 +700,20 @@ const PuzzleSolver = () => {
     <div className="max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
+        {/* Back to Home button */}
+        <Link
+          to="/"
+          onClick={() => {
+            // Clear stored puzzles when going back to home
+            localStorage.removeItem('currentPuzzles');
+            localStorage.removeItem('currentPuzzleIndex');
+          }}
+          className="inline-flex items-center px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Home
+        </Link>
+        
         {/* Only show the top navigation buttons if in review mode */}
         {isReviewMode && (
           <div className="flex flex-row justify-center gap-2 mt-6 mb-6">
@@ -649,10 +737,9 @@ const PuzzleSolver = () => {
       <div className="grid lg:grid-cols-2 gap-8">
         {/* Chess Board */}
         <div className="space-y-4">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Puzzle Position</h3>
-            {/* Ensure move navigation arrows are only visible in review mode */}
-            <div style={{ minHeight: '48px' }}>
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Puzzle Position</h3>
+                <div style={{ minHeight: '48px' }}>
               {isReviewMode ? (
                 <div className="flex items-center justify-center space-x-4 my-4">
                   <button
@@ -711,30 +798,20 @@ const PuzzleSolver = () => {
                 )}
                 
 
-                <Chessboard
-                  key={boardKey}
-                  position={isReviewMode ? getBoardFenAtMove(moveNavIndex) : getBoardFenAtMove(currentMoveIndex)}
-                  onPieceDrop={onDrop}
-                  boardOrientation={getBoardOrientation()}
-                  customBoardStyle={{
-                    borderRadius: '4px',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                  }}
-
-                  customSquareStyles={customSquareStyles}
-                  arePiecesDraggable={true}
-                  onSquareClick={handleSquareClick}
-                  renderCustomSquareContents={(square) => {
-                    // Show sword icon if this square is a capture in move preview
-                    if (selectedSquare && movePreviews.length > 0) {
-                      const isCapture = movePreviews.some(m => m.to === square && m.captured);
-                      if (isCapture) {
-                        return <SwordIcon />;
-                      }
-                    }
-                    return null;
-                  }}
-                />
+                                {(() => {
+                  const position = isReviewMode ? getBoardFenAtMove(moveNavIndex) : getBoardFenAtMove(currentMoveIndex);
+                  return (
+                    <Chessboard
+                      key={boardKey}
+                      position={position}
+                      onSquareClick={handleSquareClick}
+                      onPieceDrop={onDrop}
+                      arePiecesDraggable={true}
+                      customSquareStyles={customSquareStyles}
+                      boardOrientation={getBoardOrientation()}
+                    />
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -788,7 +865,14 @@ const PuzzleSolver = () => {
         <div className="space-y-6">
           {/* Puzzle Details */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">Puzzle #{puzzle.id}</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Puzzle #{puzzle.id}
+              {puzzleCollection && puzzleCollection.length > 1 && (
+                <span className="text-sm font-normal text-gray-500 ml-2">
+                  ({currentPuzzleIndex + 1} of {puzzleCollection.length})
+                </span>
+              )}
+            </h3>
             
             <div className="space-y-4">
               <div>
@@ -1024,20 +1108,41 @@ const PuzzleSolver = () => {
           <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
             <h3 className="text-lg font-bold mb-4">Choose a Puzzle</h3>
             <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto">
-              {otherPuzzles.length === 0 && (
+              {/* Show remaining puzzles from collection (excluding current) */}
+              {puzzleCollection && puzzleCollection.length > 0 ? (
+                puzzleCollection
+                  .map((p, index) => ({ ...p, originalIndex: index }))
+                  .filter((p) => p.originalIndex !== currentPuzzleIndex)
+                  .map((p, displayIndex) => (
+                    <button
+                      key={p.id || p.originalIndex}
+                      onClick={() => handleSelectOtherPuzzle(p)}
+                      className="w-full text-left p-3 border rounded hover:bg-blue-50 focus:outline-none"
+                    >
+                      <div className="font-semibold text-gray-900">
+                        Puzzle #{p.originalIndex + 1}
+                      </div>
+                      <div className="text-sm text-gray-600">{p.theme}</div>
+                      <div className="text-xs text-gray-400">
+                        {p.gameData?.white} vs {p.gameData?.black} • {p.difficulty ? `${p.difficulty}/5` : ''}
+                      </div>
+                    </button>
+                  ))
+              ) : otherPuzzles.length > 0 ? (
+                otherPuzzles.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => handleSelectOtherPuzzle(p)}
+                    className="w-full text-left p-3 border rounded hover:bg-blue-50 focus:outline-none"
+                  >
+                    <div className="font-semibold text-gray-900">{p.theme}</div>
+                    <div className="text-sm text-gray-600">{p.gameData?.white} vs {p.gameData?.black}</div>
+                    <div className="text-xs text-gray-400">{p.difficulty ? `${p.difficulty}/5` : ''}</div>
+                  </button>
+                ))
+              ) : (
                 <div className="text-gray-500 text-center">No other puzzles available.</div>
               )}
-              {otherPuzzles.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => handleSelectOtherPuzzle(p)}
-                  className="w-full text-left p-3 border rounded hover:bg-blue-50 focus:outline-none"
-                >
-                  <div className="font-semibold text-gray-900">{p.theme}</div>
-                  <div className="text-sm text-gray-600">{p.gameData?.white} vs {p.gameData?.black}</div>
-                  <div className="text-xs text-gray-400">{p.difficulty ? `${p.difficulty}/5` : ''}</div>
-                </button>
-              ))}
             </div>
             <button
               onClick={() => setShowMorePuzzles(false)}

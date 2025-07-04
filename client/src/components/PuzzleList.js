@@ -1,7 +1,9 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const PuzzleList = ({ puzzles, summary }) => {
+  const navigate = useNavigate();
+
   if (!puzzles || puzzles.length === 0) {
     return (
       <div style={{ 
@@ -32,6 +34,21 @@ const PuzzleList = ({ puzzles, summary }) => {
         // Fallback: prettify the theme string
         return (theme || 'Unknown').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
+  };
+
+  const handleSolvePuzzle = (puzzle, index) => {
+    // Store puzzles in localStorage for persistence across navigation
+    localStorage.setItem('currentPuzzles', JSON.stringify(puzzles));
+    localStorage.setItem('currentPuzzleIndex', index.toString());
+    
+    // Navigate to puzzle solver with state
+    navigate(`/puzzle/${puzzle.id || index}`, {
+      state: {
+        puzzles: puzzles,
+        currentPuzzleIndex: index,
+        summary: summary
+      }
+    });
   };
 
   return (
@@ -76,21 +93,24 @@ const PuzzleList = ({ puzzles, summary }) => {
           )}
 
           <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-            <Link
-              to={`/puzzle/${puzzle.id || index}`}
+            <button
+              onClick={() => handleSolvePuzzle(puzzle, index)}
               style={{
                 backgroundColor: '#0066cc',
                 color: 'white',
                 padding: '8px 16px',
                 textDecoration: 'none',
                 fontSize: '14px',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease',
+                border: 'none',
+                cursor: 'pointer',
+                borderRadius: '4px'
               }}
               onMouseOver={(e) => e.target.style.backgroundColor = '#0052a3'}
               onMouseOut={(e) => e.target.style.backgroundColor = '#0066cc'}
             >
               Solve Puzzle
-            </Link>
+            </button>
           </div>
         </div>
       ))}

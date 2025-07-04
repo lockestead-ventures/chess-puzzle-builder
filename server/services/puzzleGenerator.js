@@ -421,8 +421,7 @@ class PuzzleGenerator {
         await new Promise(resolve => setTimeout(resolve, 50));
         const puzzle = await this.createPuzzleFromPosition(position, gameData);
         if (puzzle && puzzle.solution && puzzle.solution.moves && puzzle.solution.moves.length > 0) {
-          // Print the full puzzle object for debugging
-          console.log('DEBUG createPuzzles: candidate puzzle object:', puzzle);
+          
           // Extract FEN from the correct property
           const fen = puzzle.position || puzzle.fen || (puzzle.puzzlePosition && puzzle.puzzlePosition.fen);
           if (!fen || typeof fen !== 'string' || fen.split(' ').length < 6) {
@@ -441,7 +440,7 @@ class PuzzleGenerator {
             puzzle.starRating = difficulty; // Engine/heuristic-based only
           puzzles.push(puzzle);
           } else {
-            console.log(`DEBUG createPuzzles: Skipping puzzle at FEN ${fen} because first move (${firstMove}) is not legal for side to move (${fen.split(' ')[1]})`);
+      
           }
         }
         
@@ -530,10 +529,7 @@ class PuzzleGenerator {
         // The solution is the moves that lead to the tactical position, plus the best move from there
         solutionMoves = [...movesToTactical, analysis.bestMove, ...analysis.pv.slice(1, 3)];
         
-        console.log('DEBUG createPuzzleFromPosition: puzzle position FEN:', puzzlePosition.fen);
-        console.log('DEBUG createPuzzleFromPosition: moves to tactical:', movesToTactical);
-        console.log('DEBUG createPuzzleFromPosition: best move from tactical:', analysis.bestMove);
-        console.log('DEBUG createPuzzleFromPosition: full solution moves:', solutionMoves);
+        
         
       } catch (error) {
         console.error('Error recalculating solution moves:', error);
@@ -631,9 +627,7 @@ class PuzzleGenerator {
       // Reset and replay to the target position
       chess.reset();
       
-      // Debug: print the move history and target move number
-      console.log('DEBUG createPuzzlePosition: targetMoveNumber:', targetMoveNumber);
-      console.log('DEBUG createPuzzlePosition: isChess960:', isChess960);
+      
       
       // Replay moves up to the target position and collect the truncated history
       const truncatedHistory = [];
@@ -654,7 +648,7 @@ class PuzzleGenerator {
         }
       }
       
-      console.log('DEBUG createPuzzlePosition: truncated move history:', truncatedHistory);
+      
       
       return {
         fen: chess.fen(),

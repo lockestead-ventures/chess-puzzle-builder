@@ -12,6 +12,10 @@ const UnifiedGameInput = ({ onGenerate }) => {
       return;
     }
     
+    // Store username and platform in localStorage for use in PuzzleSolver
+    localStorage.setItem('username', username.trim());
+    localStorage.setItem('platform', platform);
+    
     onGenerate({ 
       type: 'bulk', 
       platform, 

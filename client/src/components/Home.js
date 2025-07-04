@@ -300,12 +300,7 @@ const Home = () => {
       {loading && !(backendDone && progress.percentage === 100 && puzzles) && (
         <>
           <ProgressIndicator />
-          {/* Show load time if available (for debugging) */}
-          {loadTime && (
-            <div style={{ textAlign: 'center', color: '#888', fontSize: '12px', marginBottom: '10px' }}>
-              Backend loading time: {(loadTime/1000).toFixed(2)} seconds
-            </div>
-          )}
+
         </>
       )}
 

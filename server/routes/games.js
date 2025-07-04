@@ -224,7 +224,7 @@ router.post('/import', async (req, res) => {
       });
     }
     
-    console.log('DEBUG platform value:', platform);
+
     console.log('📥 Importing games for:', username, 'from', platform, `(max: ${maxGames} games, ${maxPuzzles} puzzles)`);
     
     // Add initial processing delay for sophistication

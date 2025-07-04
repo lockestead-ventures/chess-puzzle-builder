@@ -33,6 +33,7 @@ Transform chess improvement through personalized puzzles with superior user expe
 - **Better UI**: Fast, clean ASCII/monospace interface
 - **Dynamic descriptions**: Context-rich, engaging puzzle explanations
 - **More generous free tier**: 5 puzzles/day vs 3 total
+- **Seamless puzzle navigation**: Pass entire puzzle collections between pages for instant loading
 
 #### **2. Community & Gamification**
 - **Points system**: Accumulate points for completed puzzles
@@ -80,6 +81,11 @@ Transform chess improvement through personalized puzzles with superior user expe
 - **Enhanced puzzle generation** - Improved difficulty ratings, better theme categorization, and robust error handling
 - **Frontend error fixes** - Resolved React child errors and improved puzzle rendering
 - **Semantic versioning system** - Professional v0.X.Y versioning for tracking development progress
+- **Puzzle collection passing** - Seamless navigation between puzzles without regenerating from backend
+- **Enhanced puzzle navigation** - Next/previous puzzle navigation with random selection and progress tracking
+- **Improved user experience** - "See More Puzzles" modal, progress indicators, and "Back to Home" functionality
+- **Robust state management** - localStorage fallback for puzzle collections and user preferences
+- **Auto-generation on demand** - Backend generates puzzles automatically when none exist for a user
 
 ## 🚧 Phase 1: Core Puzzle Solving Excellence (v0.4.0 - v0.6.0)
 ### Puzzle Solving Experience
@@ -197,6 +203,6 @@ Transform chess improvement through personalized puzzles with superior user expe
 
 ---
 
-*Current Version: v0.3.0 - Dynamic puzzle clues and descriptions*
+*Current Version: v0.4.0 - Enhanced puzzle navigation and collection management*
 
 *This file is the living roadmap. Please update as features are completed, started, or added to the backlog.* 

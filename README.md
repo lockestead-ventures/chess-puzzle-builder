@@ -11,6 +11,8 @@ A comprehensive chess puzzle platform that generates personalized puzzles from c
 - **Progress Tracking**: Monitor your improvement with detailed analysis and difficulty ratings
 - **Multiple Themes**: Categorizes puzzles by tactical themes (mate, winning combination, tactical advantage, etc.)
 - **Difficulty Ratings**: 1-5 scale difficulty based on engine evaluation and complexity
+- **Seamless Navigation**: Pass entire puzzle collections between pages for instant loading and smooth transitions
+- **Enhanced Puzzle Flow**: Next/previous navigation with random selection, progress indicators, and "See More Puzzles" modal
 
 ### Community & Social Features
 - **Puzzle Packs**: Curated sets from Grandmasters, IMs, and popular streamers
@@ -74,7 +76,7 @@ A comprehensive chess puzzle platform that generates personalized puzzles from c
 
 4. **Open your browser**
    - Frontend: http://localhost:3000
-   - Backend API: http://localhost:5000
+   - Backend API: http://localhost:5001
 
 ## 📁 Project Structure
 
@@ -83,20 +85,25 @@ chess-puzzle-builder/
 ├── server/                 # Backend API
 │   ├── services/          # Core services
 │   │   ├── chessComService.js    # Chess.com API integration
+│   │   ├── lichessService.js     # Lichess API integration
 │   │   ├── stockfishService.js   # Stockfish engine service
 │   │   └── puzzleGenerator.js    # Puzzle generation logic
 │   ├── routes/            # API routes
+│   │   ├── auth.js        # Authentication endpoints
 │   │   ├── games.js       # Game analysis endpoints
 │   │   └── puzzles.js     # Puzzle generation endpoints
 │   └── index.js           # Express server
 ├── client/                # React frontend
 │   ├── src/
 │   │   ├── components/    # React components
-│   │   │   ├── Home.js           # Main landing page
-│   │   │   ├── UrlInput.js       # URL input form
-│   │   │   ├── PuzzleList.js     # Puzzle display
-│   │   │   ├── PuzzleSolver.js   # Interactive puzzle solver
-│   │   │   └── GameAnalysis.js   # Progress tracking
+│   │   │   ├── Home.js           # Main landing page with username/platform input
+│   │   │   ├── PuzzleList.js     # Puzzle display and collection management
+│   │   │   ├── PuzzleSolver.js   # Interactive puzzle solver with navigation
+│   │   │   ├── GameAnalysis.js   # Progress tracking
+│   │   │   ├── Header.js         # Navigation header
+│   │   │   └── AuthModal.js      # Authentication modal
+│   │   ├── contexts/      # React contexts
+│   │   │   └── AuthContext.js    # Authentication state management
 │   │   └── App.js         # Main app component
 │   └── public/            # Static assets
 └── README.md
@@ -105,29 +112,29 @@ chess-puzzle-builder/
 ## 🔧 How It Works
 
 ### 1. Game Analysis Pipeline
-- **URL Input**: Users paste chess.com game URLs
-- **Data Fetching**: Uses chess-web-api to fetch game data and PGN
-- **Position Extraction**: Extracts all positions from the game using chess.js
+- **Username/Platform Input**: Users enter their chess.com or lichess username and platform
+- **Data Fetching**: Uses chess-web-api and lichess API to fetch recent games
+- **Position Extraction**: Extracts all positions from games using chess.js
 - **Engine Analysis**: Stockfish analyzes each position for tactical opportunities
 - **Puzzle Generation**: Creates puzzles from critical positions with solutions
 
 ### 2. Puzzle Generation Algorithm
 ```javascript
 // Core puzzle generation process
-async function generatePuzzlesFromGame(gameUrl) {
-  // 1. Fetch game using chess-web-api
-  const gameData = await chessComService.fetchGameData(gameUrl);
+async function generatePuzzlesFromGames(username, platform) {
+  // 1. Fetch recent games using platform-specific API
+  const games = await fetchRecentGames(username, platform);
   
-  // 2. Extract all positions from the game
-  const positions = extractPositionsFromGame(gameData);
+  // 2. Extract all positions from each game
+  const positions = extractPositionsFromGames(games);
   
   // 3. Analyze each position with Stockfish
   const tacticalPositions = await findTacticalPositions(positions);
   
   // 4. Create puzzles from tactical positions
-  const puzzles = await createPuzzles(tacticalPositions, gameData);
+  const puzzles = await createPuzzles(tacticalPositions, games);
   
-  return { game: gameData, puzzles };
+  return { games, puzzles };
 }
 ```
 
@@ -136,6 +143,8 @@ async function generatePuzzlesFromGame(gameUrl) {
 - **Real-time Validation**: Immediate feedback on moves
 - **Progress Tracking**: Visual progress indicators and statistics
 - **Responsive Design**: Works on desktop and mobile devices
+- **Puzzle Collection Management**: Seamless navigation between puzzles without backend calls
+- **Enhanced UX**: Progress indicators, modals, and intuitive navigation
 
 ## 🛠️ Technology Stack
 
@@ -144,6 +153,7 @@ async function generatePuzzlesFromGame(gameUrl) {
 - **chess.js**: Chess logic and PGN parsing
 - **stockfish.js**: Chess engine for position analysis
 - **@andyruwruw/chess-web-api**: Chess.com API integration
+- **lichess API**: Lichess.org API integration
 - **PostgreSQL**: Database (planned for future)
 
 ### Frontend
@@ -155,14 +165,19 @@ async function generatePuzzlesFromGame(gameUrl) {
 
 ## 📊 API Endpoints
 
+### Authentication
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login
+- `GET /api/auth/profile` - Get user profile
+
 ### Games
-- `POST /api/games/analyze` - Analyze a chess.com game URL
-- `POST /api/games/validate-url` - Validate chess.com URL format
+- `POST /api/games/analyze` - Analyze games from username/platform
 - `GET /api/games/player/:username` - Get player's recent games
 
 ### Puzzles
-- `POST /api/puzzles/generate` - Generate puzzles from game URL
-- `POST /api/puzzles/validate` - Validate puzzle solution
+- `POST /api/puzzles/generate` - Generate puzzles from username/platform
+- `GET /api/puzzles/random` - Get a random puzzle (auto-generates if none exist)
+- `GET /api/puzzles/generate-more` - Generate additional puzzles
 - `GET /api/puzzles/:puzzleId` - Get specific puzzle
 - `GET /api/puzzles/health` - Health check
 
@@ -170,122 +185,74 @@ async function generatePuzzlesFromGame(gameUrl) {
 
 ### 1. Generate Puzzles
 1. Go to the home page
-2. Paste a chess.com game URL (live, daily, or archive games)
-3. Click "Generate Puzzles"
-4. Wait for analysis (30-60 seconds depending on game length)
-5. Review generated puzzles with difficulty ratings and themes
+2. Enter your chess.com or lichess username
+3. Select your platform (chess.com or lichess)
+4. Click "Generate Puzzles"
+5. Wait for analysis (30-60 seconds depending on game count)
+6. Review generated puzzles with difficulty ratings and themes
 
 ### 2. Solve Puzzles
 1. Click on any puzzle to start solving
 2. Use the interactive chess board to make moves
 3. Get immediate feedback on correct/incorrect moves
-4. Use hints if needed
-5. View the solution and explanation
+4. Use hints if needed (available after first failed attempt)
+5. View the solution and explanation after 5 failed attempts
+6. Navigate between puzzles using next/previous buttons or random selection
 
-### 3. Track Progress
+### 3. Enhanced Navigation
+1. **Next Puzzle**: Automatically loads the next puzzle in sequence
+2. **Previous Puzzle**: Go back to the previous puzzle
+3. **Random Puzzle**: Select a random puzzle from your collection
+4. **See More Puzzles**: View remaining puzzles in a modal
+5. **Progress Tracking**: See current puzzle number and total count
+6. **Back to Home**: Return to home page and clear stored puzzles
+
+### 4. Track Progress
 1. Visit the Analysis page to see your statistics
 2. Monitor solving accuracy and speed
 3. Review puzzle themes and difficulty distribution
 4. Get personalized improvement tips
 
-## 🔍 Supported URL Formats
+## 🔍 Supported Platforms
 
-- Live games: `https://www.chess.com/game/live/1234567890`
-- Daily games: `https://www.chess.com/game/daily/1234567890`
-- Archive games: `https://www.chess.com/play/online/archive/username/1234567890`
+- **Chess.com**: Live games, daily games, archive games
+- **Lichess.org**: Rated games, casual games, tournament games
 
 ## 🎯 Puzzle Themes
 
 - **Checkmate**: Forced checkmate sequences
 - **Winning Combination**: Decisive tactical advantages
-- **Tactical Advantage**: Strong tactical opportunities
-- **Positional Advantage**: Positional improvements
-- **Tactical Opportunity**: General tactical chances
+- **Tactical Advantage**: Material or positional gains
+- **Defensive Play**: Finding the best defensive moves
+- **Endgame Technique**: Endgame-specific tactical opportunities
 
-## 🚧 Development
+## 🚀 Recent Updates (v0.4.0)
 
-### Running Tests
-```bash
-# Backend tests
-cd server && npm test
+### Enhanced Puzzle Navigation
+- **Puzzle Collection Passing**: Entire puzzle collections are passed between pages for instant loading
+- **Seamless Transitions**: No backend calls needed when navigating between puzzles
+- **Progress Indicators**: Visual feedback showing current puzzle number and total count
+- **Random Selection**: Smart random puzzle selection that excludes the current puzzle
 
-# Frontend tests
-cd client && npm test
-```
+### Improved User Experience
+- **"See More Puzzles" Modal**: Browse remaining puzzles without leaving the current puzzle
+- **"Back to Home" Button**: Easy navigation back to the home page
+- **Robust State Management**: localStorage fallback for puzzle collections and user preferences
+- **Auto-Generation**: Backend automatically generates puzzles when none exist for a user
 
-### Building for Production
-```bash
-# Build frontend
-cd client && npm run build
-
-# Start production server
-cd server && npm start
-```
-
-### Environment Variables
-Create a `.env` file in the server directory:
-```env
-PORT=5000
-NODE_ENV=development
-# Add database credentials when implementing PostgreSQL
-```
+### Technical Improvements
+- **Route Optimization**: Fixed route ordering to prevent parameterized routes from overriding specific endpoints
+- **Error Handling**: Better error handling for API failures and edge cases
+- **Performance**: Faster puzzle loading and navigation experience
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+We welcome contributions! Please see our contributing guidelines for more details.
 
-## 📝 License
+## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [chess-web-api](https://github.com/andyruwruw/chess-web-api) - Chess.com API integration
-- [stockfish.js](https://github.com/lichess-org/stockfish.js) - Chess engine
-- [react-chessboard](https://github.com/Clariity/react-chessboard) - Chess board component
-- [chess.js](https://github.com/jhlywa/chess.js) - Chess logic library
-
-## 📞 Support
-
-If you have any questions or need help, please open an issue on GitHub or contact us at support@chesspuzzlebuilder.com.
-
-## 📋 Versioning
-
-This project uses **Semantic Versioning (SemVer)** with the format `vX.Y.Z`:
-
-- **v0.X.Y** - Pre-MVP development versions
-- **v1.0.0** - MVP launch (first production release with freemium tiers)
-
-### Version Breakdown
-- **Major (X)**: Breaking changes, major releases (0 = pre-MVP, 1 = MVP+)
-- **Minor (Y)**: New features added (increments with each feature)
-- **Patch (Z)**: Bug fixes and small improvements
-
-### Current Version: `v0.3.0`
-
-**Version History:**
-- `v0.0.1` - Initial setup: Multi-platform chess puzzle builder with authentication
-- `v0.1.0` - UI transformation: Username-focused puzzle builder with text-based UI
-- `v0.2.0` - Puzzle solving system: Hint/solution gating, star rating, roadmap tracking
-- `v0.3.0` - Dynamic puzzle clues: Context-rich, varied descriptions and hints
-
-**Upcoming Milestones:**
-- `v0.4.0` - Enhanced puzzle solving experience
-- `v0.7.0` - User onboarding and freemium foundation
-- `v1.0.0` - MVP launch with puzzle packs and community features
-
-**Examples:**
-- `v0.0.1` - Initial project setup
-- `v0.1.0` - Added user authentication feature
-- `v0.1.1` - Fixed login bug
-- `v0.2.0` - Added puzzle solver
-- `v0.2.1` - Improved error handling
-- `v1.0.0` - MVP launch with freemium tiers
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
-**Happy puzzling! 🧩♟️** 
+*Current Version: v0.4.0 - Enhanced puzzle navigation and collection management* 
