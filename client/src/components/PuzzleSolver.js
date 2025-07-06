@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
-import { ArrowLeft, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, Target, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, RotateCcw, Eye, EyeOff, Target, ChevronLeft, ChevronRight, Bookmark } from 'lucide-react';
 
 const PuzzleSolver = () => {
   const { puzzleId } = useParams();
@@ -44,6 +44,18 @@ const PuzzleSolver = () => {
   const [puzzleCollection, setPuzzleCollection] = useState(null);
   const [currentPuzzleIndex, setCurrentPuzzleIndex] = useState(0);
   const [summary, setSummary] = useState(null);
+  const [puzzlesStartedToday, setPuzzlesStartedToday] = useState(0);
+  const [totalPuzzlesToday, setTotalPuzzlesToday] = useState(0);
+  const [showUnlockPrompt, setShowUnlockPrompt] = useState(false);
+
+  // Check if user is signed in (you can enhance this with actual auth logic)
+  const isUserSignedIn = () => {
+    // For now, check if username and platform are stored
+    // In a real app, you'd check for auth tokens, user session, etc.
+    const username = localStorage.getItem('username');
+    const platform = localStorage.getItem('platform');
+    return !!(username && platform);
+  };
 
   useEffect(() => {
     loadPuzzle();
@@ -550,6 +562,7 @@ const PuzzleSolver = () => {
 
   // Update loadNextPuzzle to randomly select from puzzle collection
   const loadNextPuzzle = async () => {
+    
     setIsLoadingNextPuzzle(true);
     setShowRatingModal(false);
     setIsReviewMode(false);
@@ -671,6 +684,69 @@ const PuzzleSolver = () => {
     setHasLoadedOtherPuzzles(false); // Reset for next puzzle
   };
 
+  // Track puzzle attempts within 24 hours
+  useEffect(() => {
+    const trackPuzzleAttempt = () => {
+      const now = Date.now();
+      const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+      
+      // Get existing attempts from localStorage
+      const existingAttempts = JSON.parse(localStorage.getItem('puzzleAttempts') || '[]');
+      
+      // Filter out attempts older than 24 hours
+      const recentAttempts = existingAttempts.filter(timestamp => timestamp > twentyFourHoursAgo);
+      
+      // Add current attempt
+      recentAttempts.push(now);
+      
+      // Save back to localStorage
+      localStorage.setItem('puzzleAttempts', JSON.stringify(recentAttempts));
+      
+      // Update state
+      setPuzzlesStartedToday(recentAttempts.length);
+      
+      // Note: Removed automatic unlock prompt - now using manual CTAs instead
+      
+      // Calculate total puzzles available today (this could be enhanced with backend data)
+      const username = localStorage.getItem('username');
+      const platform = localStorage.getItem('platform');
+      if (username && platform) {
+        // For now, assume 5 puzzles per day (free tier limit)
+        setTotalPuzzlesToday(5);
+      } else {
+        setTotalPuzzlesToday(0);
+      }
+    };
+
+    // Track attempt when puzzle loads
+    if (puzzle && puzzle.id) {
+      trackPuzzleAttempt();
+    }
+  }, [puzzle]);
+
+  // Load existing puzzle attempts on component mount
+  useEffect(() => {
+    const loadPuzzleAttempts = () => {
+      const now = Date.now();
+      const twentyFourHoursAgo = now - (24 * 60 * 60 * 1000);
+      
+      const existingAttempts = JSON.parse(localStorage.getItem('puzzleAttempts') || '[]');
+      const recentAttempts = existingAttempts.filter(timestamp => timestamp > twentyFourHoursAgo);
+      
+      setPuzzlesStartedToday(recentAttempts.length);
+      
+      const username = localStorage.getItem('username');
+      const platform = localStorage.getItem('platform');
+      if (username && platform) {
+        setTotalPuzzlesToday(5);
+      } else {
+        setTotalPuzzlesToday(0);
+      }
+    };
+
+    loadPuzzleAttempts();
+  }, []);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-64">
@@ -736,12 +812,24 @@ const PuzzleSolver = () => {
 
       <div className="grid lg:grid-cols-2 gap-8">
         {/* Chess Board */}
-        <div className="space-y-4">
-                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Puzzle Position</h3>
-                <div style={{ minHeight: '48px' }}>
+        <div className="space-y-3">
+                        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-lg font-semibold text-gray-900">Puzzle #{puzzle.id}</h3>
+                  <button
+                    onClick={() => {
+                      // Save puzzle functionality - you can implement this later
+                      console.log('Save puzzle clicked');
+                    }}
+                    className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="Save puzzle"
+                  >
+                    <Bookmark className="w-5 h-5" />
+                  </button>
+                </div>
+                <div style={{ minHeight: '40px' }}>
               {isReviewMode ? (
-                <div className="flex items-center justify-center space-x-4 my-4">
+                <div className="flex items-center justify-center space-x-4 my-3">
                   <button
                     onClick={handleNavBack}
                     className={`p-2 rounded-full border transition-colors duration-150 ${moveNavIndex === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}`}
@@ -761,24 +849,17 @@ const PuzzleSolver = () => {
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center justify-center my-4" style={{ height: '40px' }}>
+                <div className="flex items-center justify-center my-3" style={{ height: '40px' }}>
                   {isOpponentMoving && (
-                    <span className="text-gray-500 text-base font-medium">Opponent is thinking...</span>
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                      <span className="text-gray-500 text-base font-medium">Opponent is thinking...</span>
+                    </div>
                   )}
                 </div>
               )}
             </div>
             <div className="chess-board">
-              {/* Opponent Thinking Indicator */}
-              {isOpponentMoving && (
-                <div className="mb-3 p-3 bg-gray-100 border border-gray-200 rounded-lg text-center">
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
-                    <span className="text-gray-700 font-medium">Opponent is thinking...</span>
-                  </div>
-                </div>
-              )}
-              
               <div style={{ position: 'relative' }}>
                 {/* Success Animation Overlay */}
                 {showSuccessAnimation && (
@@ -818,7 +899,7 @@ const PuzzleSolver = () => {
 
           {/* Move Feedback */}
           {isCorrect !== null && (
-            <div className={`p-4 rounded-lg flex items-center ${
+            <div className={`p-3 rounded-lg flex items-center ${
               isCorrect ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'
             }`}>
               {isCorrect ? (
@@ -834,7 +915,7 @@ const PuzzleSolver = () => {
 
           {/* Move Error Display */}
           {moveError && (
-            <div className="p-4 rounded-lg flex items-center bg-orange-50 border border-orange-200">
+            <div className="p-3 rounded-lg flex items-center bg-orange-50 border border-orange-200">
               <XCircle className="h-5 w-5 text-orange-600 mr-2" />
               <span className="text-orange-800">
                 {moveError}
@@ -843,7 +924,7 @@ const PuzzleSolver = () => {
           )}
 
           {/* User Moves */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
             <h4 className="font-semibold text-gray-900 mb-2">Your Moves</h4>
             <div className="flex flex-wrap gap-2">
               {userMoves.map((move, index) => (
@@ -863,16 +944,92 @@ const PuzzleSolver = () => {
 
         {/* Puzzle Info */}
         <div className="space-y-6">
+          {/* Puzzle Controls */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-gray-900">Today's Progress</h3>
+              {/* Debug reset button - only show in development */}
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('puzzleAttempts');
+                    localStorage.removeItem('unlockPromptDate');
+                    setPuzzlesStartedToday(0);
+                    alert('Puzzle attempts reset! Refresh the page to see changes.');
+                  }}
+                  className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                  title="Reset puzzle attempts (dev only)"
+                >
+                  🔄 Reset
+                </button>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-medium ${
+                  totalPuzzlesToday > 0 && puzzlesStartedToday >= totalPuzzlesToday 
+                    ? 'text-red-500 font-semibold' 
+                    : totalPuzzlesToday > 0 && puzzlesStartedToday >= totalPuzzlesToday - 1
+                    ? 'text-orange-500 font-medium'
+                    : 'text-gray-700'
+                }`}>
+                  {totalPuzzlesToday > 0 ? (
+                    `${puzzlesStartedToday} of ${totalPuzzlesToday}`
+                  ) : puzzleCollection && puzzleCollection.length > 1 ? (
+                    `${currentPuzzleIndex + 1} of ${puzzleCollection.length}`
+                  ) : '1 of 1'}
+                </span>
+              </div>
+              
+              {totalPuzzlesToday > 0 && (
+                <div className="text-xs text-gray-500">
+                  Puzzles started in the last 24 hours
+                  {puzzlesStartedToday >= totalPuzzlesToday && (
+                    <span className="text-red-500 font-medium ml-1">
+                      • Daily limit reached
+                    </span>
+                  )}
+                  {puzzlesStartedToday === totalPuzzlesToday - 1 && (
+                    <span className="text-orange-500 font-medium ml-1">
+                      • Last puzzle today
+                    </span>
+                  )}
+                </div>
+              )}
+              
+              {/* Action Buttons */}
+              <div className="pt-2 border-t border-gray-100">
+                <div className="flex justify-between items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setShowUnlockPrompt(true);
+                    }}
+                    className="w-1/2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors text-sm"
+                  >
+                    Unlock More
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (isUserSignedIn()) {
+                        // Share functionality - you can implement this later
+                        console.log('Share button clicked - user is signed in');
+                      } else {
+                        // Show unlock prompt for non-signed in users
+                        setShowUnlockPrompt(true);
+                      }
+                    }}
+                    className="w-1/4 px-3 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 font-medium transition-colors text-sm"
+                  >
+                    Share
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Puzzle Details */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">
-              Puzzle #{puzzle.id}
-              {puzzleCollection && puzzleCollection.length > 1 && (
-                <span className="text-sm font-normal text-gray-500 ml-2">
-                  ({currentPuzzleIndex + 1} of {puzzleCollection.length})
-                </span>
-              )}
-            </h3>
             
             <div className="space-y-4">
               <div>
@@ -1005,6 +1162,13 @@ const PuzzleSolver = () => {
                 {isLoadingNextPuzzle ? 'Loading...' : 'Play Next Puzzle'}
               </button>
             </div>
+            {puzzlesStartedToday === 1 && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  🎉 Great job! Sign up to unlock unlimited puzzles and track your progress.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1150,6 +1314,60 @@ const PuzzleSolver = () => {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Unlock More Puzzles Modal */}
+      {showUnlockPrompt && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4 text-center">
+            <div className="mb-6">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Unlock More Puzzles!</h3>
+              <p className="text-gray-600 mb-4">
+                You're on a roll! Sign up to unlock unlimited puzzles and track your progress.
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  setShowUnlockPrompt(false);
+                  // Navigate to sign up page (you can adjust this route)
+                  window.location.href = '/signup';
+                }}
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+              >
+                Sign Up for Free
+              </button>
+              
+              <button
+                onClick={() => {
+                  setShowUnlockPrompt(false);
+                  // Navigate to pricing page
+                  window.location.href = '/pricing';
+                }}
+                className="w-full px-4 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 font-medium transition-colors"
+              >
+                View Pricing
+              </button>
+              
+              <button
+                onClick={() => setShowUnlockPrompt(false)}
+                className="w-full px-4 py-2 text-gray-500 hover:text-gray-700 text-sm transition-colors"
+              >
+                Continue Playing
+              </button>
+            </div>
+            
+            <div className="mt-4 text-xs text-gray-400">
+              Free tier: 5 puzzles per day • Pro: Unlimited puzzles
+            </div>
           </div>
         </div>
       )}
