@@ -1035,32 +1035,20 @@ const PuzzleSolver = () => {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold text-gray-900">Today's Progress</h3>
-              {/* Debug reset buttons - only show in development */}
+              {/* Debug reset button - only show in development */}
               {process.env.NODE_ENV === 'development' && (
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => {
-                      localStorage.removeItem('puzzleAttempts');
-                      localStorage.removeItem('unlockPromptDate');
-                      setPuzzlesStartedToday(0);
-                      alert('Puzzle attempts reset! Refresh the page to see changes.');
-                    }}
-                    className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                    title="Reset puzzle attempts (dev only)"
-                  >
-                    🔄 Reset
-                  </button>
-                  <button
-                    onClick={() => {
-                      clearUsedFenPositions();
-                      alert('FEN tracking cleared! You can now see duplicate puzzles again.');
-                    }}
-                    className="px-2 py-1 text-xs bg-orange-100 text-orange-700 rounded hover:bg-orange-200 transition-colors"
-                    title="Clear FEN tracking (dev only)"
-                  >
-                    🧩 Clear FEN
-                  </button>
-                </div>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('puzzleAttempts');
+                    localStorage.removeItem('unlockPromptDate');
+                    setPuzzlesStartedToday(0);
+                    alert('Puzzle attempts reset! Refresh the page to see changes.');
+                  }}
+                  className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                  title="Reset puzzle attempts (dev only)"
+                >
+                  🔄 Reset
+                </button>
               )}
             </div>
             
