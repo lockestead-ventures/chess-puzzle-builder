@@ -420,7 +420,17 @@ router.get('/others', async (req, res) => {
  */
 router.get('/generate-more', async (req, res) => {
   try {
-    const { username, platform } = req.query;
+    const { username, platform, usedFens } = req.query;
+    
+    // Parse used FEN positions from query parameter
+    let usedFenPositions = [];
+    if (usedFens) {
+      try {
+        usedFenPositions = JSON.parse(decodeURIComponent(usedFens));
+      } catch (error) {
+        console.warn('Failed to parse used FEN positions:', error);
+      }
+    }
     
     // Generate sample puzzles for the user
     const sampleGameData = {
@@ -436,9 +446,16 @@ router.get('/generate-more', async (req, res) => {
     const result = await puzzleGenerator.generatePuzzlesFromGameData(sampleGameData);
     
     if (result.puzzles && result.puzzles.length > 0) {
-      // Save puzzles to the database
+      // Filter out puzzles that use already-seen FEN positions
+      const uniquePuzzles = result.puzzles.filter(puzzle => {
+        return !usedFenPositions.includes(puzzle.position);
+      });
+      
+      console.log(`[DEBUG] Generated ${result.puzzles.length} puzzles, filtered to ${uniquePuzzles.length} unique puzzles`);
+      
+      // Save unique puzzles to the database
       const savedPuzzles = [];
-      for (const puzzle of result.puzzles.slice(0, 3)) { // Limit to 3 puzzles
+      for (const puzzle of uniquePuzzles.slice(0, 3)) { // Limit to 3 puzzles
         const savedPuzzle = puzzleModel.createPuzzle({
           ...puzzle,
           userId: username || 'sample-user',
@@ -450,7 +467,9 @@ router.get('/generate-more', async (req, res) => {
       res.json({
         success: true,
         puzzles: savedPuzzles,
-        message: `Generated ${savedPuzzles.length} new puzzles`
+        message: `Generated ${savedPuzzles.length} new unique puzzles`,
+        totalGenerated: result.puzzles.length,
+        uniqueGenerated: uniquePuzzles.length
       });
     } else {
       res.status(404).json({

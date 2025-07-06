@@ -57,6 +57,65 @@ const PuzzleSolver = () => {
     return !!(username && platform);
   };
 
+  // FEN tracking functions for puzzle uniqueness
+  const getUsedFenPositions = () => {
+    try {
+      const usedFens = localStorage.getItem('usedFenPositions');
+      return usedFens ? JSON.parse(usedFens) : [];
+    } catch (error) {
+      console.error('[ERROR] Error reading used FEN positions:', error);
+      return [];
+    }
+  };
+
+  const addUsedFenPosition = (fen) => {
+    try {
+      const usedFens = getUsedFenPositions();
+      if (!usedFens.includes(fen)) {
+        usedFens.push(fen);
+        localStorage.setItem('usedFenPositions', JSON.stringify(usedFens));
+        console.log('[DEBUG] Added FEN to used positions:', fen.substring(0, 20) + '...');
+      }
+    } catch (error) {
+      console.error('[ERROR] Error adding used FEN position:', error);
+    }
+  };
+
+  const isFenPositionUsed = (fen) => {
+    const usedFens = getUsedFenPositions();
+    return usedFens.includes(fen);
+  };
+
+  const clearUsedFenPositions = () => {
+    try {
+      localStorage.removeItem('usedFenPositions');
+      console.log('[DEBUG] Cleared used FEN positions');
+    } catch (error) {
+      console.error('[ERROR] Error clearing used FEN positions:', error);
+    }
+  };
+
+  // Filter out duplicate puzzles based on FEN positions
+  const filterDuplicatePuzzles = (puzzles) => {
+    if (!puzzles || !Array.isArray(puzzles)) return [];
+    
+    const uniquePuzzles = [];
+    const usedFens = getUsedFenPositions();
+    
+    for (const puzzle of puzzles) {
+      const fen = puzzle.position;
+      if (fen && !usedFens.includes(fen)) {
+        uniquePuzzles.push(puzzle);
+        addUsedFenPosition(fen);
+      } else if (fen) {
+        console.log('[DEBUG] Skipping duplicate puzzle with FEN:', fen.substring(0, 20) + '...');
+      }
+    }
+    
+    console.log(`[DEBUG] Filtered ${puzzles.length} puzzles to ${uniquePuzzles.length} unique puzzles`);
+    return uniquePuzzles;
+  };
+
   useEffect(() => {
     loadPuzzle();
   }, [puzzleId]);
@@ -144,6 +203,8 @@ const PuzzleSolver = () => {
         }
         
         if (targetPuzzle) {
+          // Track this puzzle's FEN position to avoid duplicates
+          addUsedFenPosition(targetPuzzle.position);
           setPuzzle(targetPuzzle);
           const newChess = new Chess(targetPuzzle.position);
           setChess(newChess);
@@ -159,6 +220,8 @@ const PuzzleSolver = () => {
       const data = await response.json();
       if (!data.success || !data.puzzle) throw new Error('Puzzle not found');
       
+      // Track this puzzle's FEN position to avoid duplicates
+      addUsedFenPosition(data.puzzle.position);
       setPuzzle(data.puzzle);
       const newChess = new Chess(data.puzzle.position);
       setChess(newChess);
@@ -533,31 +596,36 @@ const PuzzleSolver = () => {
 
   // Enhanced lazy loading: generate more puzzles on first chessboard interaction, then fetch others
   useEffect(() => {
-    if (
-      hasInteractedWithBoard &&
-      !hasLoadedOtherPuzzles &&
-      puzzle && puzzle.id
-    ) {
-      console.log('[DEBUG] Triggering puzzle generation on first board interaction');
-      const username = localStorage.getItem('username');
-      const platform = localStorage.getItem('platform');
-      fetch(`/api/puzzles/generate-more?username=${encodeURIComponent(username)}&platform=${encodeURIComponent(platform)}`)
-        .then(res => res.json())
-        .then(data => {
-          return fetch(`/api/puzzles/others?exclude=${puzzle.id}`);
-        })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && Array.isArray(data.puzzles)) {
-            setOtherPuzzles(data.puzzles);
-          }
-          setHasLoadedOtherPuzzles(true);
-        })
-        .catch((error) => {
-          console.error('[ERROR] Error in puzzle generation:', error);
-          setHasLoadedOtherPuzzles(true);
-        });
-    }
+          if (
+        hasInteractedWithBoard &&
+        !hasLoadedOtherPuzzles &&
+        puzzle && puzzle.id
+      ) {
+        console.log('[DEBUG] Triggering puzzle generation on first board interaction');
+        const username = localStorage.getItem('username');
+        const platform = localStorage.getItem('platform');
+        const usedFens = getUsedFenPositions();
+        
+        fetch(`/api/puzzles/generate-more?username=${encodeURIComponent(username)}&platform=${encodeURIComponent(platform)}&usedFens=${encodeURIComponent(JSON.stringify(usedFens))}`)
+          .then(res => res.json())
+          .then(data => {
+            console.log('[DEBUG] Generated more puzzles:', data);
+            return fetch(`/api/puzzles/others?exclude=${puzzle.id}`);
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success && Array.isArray(data.puzzles)) {
+              // Filter the other puzzles for uniqueness as well
+              const uniqueOtherPuzzles = filterDuplicatePuzzles(data.puzzles);
+              setOtherPuzzles(uniqueOtherPuzzles);
+            }
+            setHasLoadedOtherPuzzles(true);
+          })
+          .catch((error) => {
+            console.error('[ERROR] Error in puzzle generation:', error);
+            setHasLoadedOtherPuzzles(true);
+          });
+      }
   }, [hasInteractedWithBoard, hasLoadedOtherPuzzles, puzzle]);
 
   // Update loadNextPuzzle to randomly select from puzzle collection
@@ -599,23 +667,42 @@ const PuzzleSolver = () => {
         // Get remaining puzzles (exclude the current one)
         const remainingPuzzles = puzzleCollection.filter((_, index) => index !== currentPuzzleIndex);
         
-        if (remainingPuzzles.length > 0) {
-          // Randomly select from remaining puzzles
-          const randomIndex = Math.floor(Math.random() * remainingPuzzles.length);
-          nextPuzzle = remainingPuzzles[randomIndex];
+        // Filter out duplicates based on FEN positions
+        const uniqueRemainingPuzzles = filterDuplicatePuzzles(remainingPuzzles);
+        
+        if (uniqueRemainingPuzzles.length > 0) {
+          // Randomly select from remaining unique puzzles
+          const randomIndex = Math.floor(Math.random() * uniqueRemainingPuzzles.length);
+          nextPuzzle = uniqueRemainingPuzzles[randomIndex];
           
           // Find the index of the selected puzzle in the original collection
           const newIndex = puzzleCollection.findIndex(p => p.id === nextPuzzle.id);
           setCurrentPuzzleIndex(newIndex);
         } else {
-          // If no remaining puzzles, cycle back to the first one
-          nextPuzzle = puzzleCollection[0];
-          setCurrentPuzzleIndex(0);
+          // If no unique remaining puzzles, try to find any unused puzzle
+          const allUnusedPuzzles = filterDuplicatePuzzles(puzzleCollection);
+          if (allUnusedPuzzles.length > 0) {
+            const randomIndex = Math.floor(Math.random() * allUnusedPuzzles.length);
+            nextPuzzle = allUnusedPuzzles[randomIndex];
+            const newIndex = puzzleCollection.findIndex(p => p.id === nextPuzzle.id);
+            setCurrentPuzzleIndex(newIndex);
+          } else {
+            // If all puzzles have been used, cycle back to the first one
+            nextPuzzle = puzzleCollection[0];
+            setCurrentPuzzleIndex(0);
+          }
         }
       } else if (otherPuzzles.length > 0) {
-        // Fallback to other puzzles
-        nextPuzzle = otherPuzzles[0];
-        setOtherPuzzles(otherPuzzles.slice(1));
+        // Fallback to other puzzles (filter for uniqueness)
+        const uniqueOtherPuzzles = filterDuplicatePuzzles(otherPuzzles);
+        if (uniqueOtherPuzzles.length > 0) {
+          nextPuzzle = uniqueOtherPuzzles[0];
+          setOtherPuzzles(otherPuzzles.slice(1));
+        } else {
+          // If all other puzzles are duplicates, try the first one anyway
+          nextPuzzle = otherPuzzles[0];
+          setOtherPuzzles(otherPuzzles.slice(1));
+        }
       } else {
         // Final fallback: fetch a new random puzzle from the backend
         const username = localStorage.getItem('username');
@@ -948,20 +1035,32 @@ const PuzzleSolver = () => {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold text-gray-900">Today's Progress</h3>
-              {/* Debug reset button - only show in development */}
+              {/* Debug reset buttons - only show in development */}
               {process.env.NODE_ENV === 'development' && (
-                <button
-                  onClick={() => {
-                    localStorage.removeItem('puzzleAttempts');
-                    localStorage.removeItem('unlockPromptDate');
-                    setPuzzlesStartedToday(0);
-                    alert('Puzzle attempts reset! Refresh the page to see changes.');
-                  }}
-                  className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                  title="Reset puzzle attempts (dev only)"
-                >
-                  🔄 Reset
-                </button>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('puzzleAttempts');
+                      localStorage.removeItem('unlockPromptDate');
+                      setPuzzlesStartedToday(0);
+                      alert('Puzzle attempts reset! Refresh the page to see changes.');
+                    }}
+                    className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                    title="Reset puzzle attempts (dev only)"
+                  >
+                    🔄 Reset
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearUsedFenPositions();
+                      alert('FEN tracking cleared! You can now see duplicate puzzles again.');
+                    }}
+                    className="px-2 py-1 text-xs bg-orange-100 text-orange-700 rounded hover:bg-orange-200 transition-colors"
+                    title="Clear FEN tracking (dev only)"
+                  >
+                    🧩 Clear FEN
+                  </button>
+                </div>
               )}
             </div>
             
