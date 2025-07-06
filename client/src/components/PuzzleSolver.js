@@ -815,7 +815,7 @@ const PuzzleSolver = () => {
         <div className="space-y-3">
                         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-gray-900">Puzzle #{puzzle.id}</h3>
+                  <h3 className="text-lg font-semibold text-gray-900">Puzzle #{puzzle.id ? puzzle.id.substring(0, 8) : 'Unknown'}</h3>
                   <button
                     onClick={() => {
                       // Save puzzle functionality - you can implement this later
@@ -1284,7 +1284,7 @@ const PuzzleSolver = () => {
                       className="w-full text-left p-3 border rounded hover:bg-blue-50 focus:outline-none"
                     >
                       <div className="font-semibold text-gray-900">
-                        Puzzle #{p.originalIndex + 1}
+                        Puzzle #{p.id ? p.id.substring(0, 8) : p.originalIndex + 1}
                       </div>
                       <div className="text-sm text-gray-600">{p.theme}</div>
                       <div className="text-xs text-gray-400">

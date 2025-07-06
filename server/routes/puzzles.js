@@ -318,8 +318,154 @@ router.post('/:puzzleId/bookmark', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/puzzles/random
+ * Get a random puzzle (auto-generates if none exist)
+ */
+router.get('/random', async (req, res) => {
+  try {
+    const { username, platform } = req.query;
+    
+    // First, try to get a random puzzle from existing puzzles
+    const allPuzzles = puzzleModel.getAllPuzzles();
+    
+    if (allPuzzles.length > 0) {
+      // Get a random puzzle
+      const randomIndex = Math.floor(Math.random() * allPuzzles.length);
+      const randomPuzzle = allPuzzles[randomIndex];
+      
+      res.json({
+        success: true,
+        puzzle: randomPuzzle
+      });
+      return;
+    }
+    
+    // If no puzzles exist, generate some sample puzzles
+    console.log('No puzzles found, generating sample puzzles...');
+    
+    // Generate a sample puzzle using the puzzle generator
+    const sampleGameData = {
+      id: 'sample-game',
+      white: 'SamplePlayer',
+      black: 'SampleOpponent',
+      result: '1-0',
+      type: 'rapid',
+      pgn: '1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. b4 Bxb4 5. c3 Ba5 6. d4 exd4 7. O-O dxc3 8. Qb3 Qf6 9. e5 Qg6 10. Re1 Nge7 11. Ba3 b5 12. Qxb5 Rb8 13. Qa4 Bb6 14. Nbd2 Bb7 15. Ne4 Qf5 16. Bxd3 Qh5 17. Nf6+ gxf6 18. exf6 Rg8 19. Rad1 Qxf3 20. Rxe7+ Nxe7 21. Qxd7+ Kxd7 22. Bf5+ Ke8 23. Bd7+ Kf8 24. Bxe7#',
+      platform: 'sample'
+    };
+    
+    const result = await puzzleGenerator.generatePuzzlesFromGameData(sampleGameData);
+    
+    if (result.puzzles && result.puzzles.length > 0) {
+      // Save the first puzzle to the database
+      const savedPuzzle = puzzleModel.createPuzzle({
+        ...result.puzzles[0],
+        userId: 'sample-user',
+        gameId: 'sample-game'
+      });
+      
+      res.json({
+        success: true,
+        puzzle: savedPuzzle
+      });
+    } else {
+      res.status(404).json({
+        error: 'No puzzles available',
+        message: 'Failed to generate sample puzzles'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error getting random puzzle:', error);
+    res.status(500).json({
+      error: 'Failed to get random puzzle',
+      message: error.message
+    });
+  }
+});
 
+/**
+ * GET /api/puzzles/others
+ * Get other puzzles (excluding a specific one)
+ */
+router.get('/others', async (req, res) => {
+  try {
+    const { exclude } = req.query;
+    
+    // Get all puzzles except the excluded one
+    const allPuzzles = puzzleModel.getAllPuzzles();
+    const otherPuzzles = exclude ? allPuzzles.filter(p => p.id !== exclude) : allPuzzles;
+    
+    // Limit to 10 puzzles to avoid overwhelming the frontend
+    const limitedPuzzles = otherPuzzles.slice(0, 10);
+    
+    res.json({
+      success: true,
+      puzzles: limitedPuzzles
+    });
+    
+  } catch (error) {
+    console.error('Error getting other puzzles:', error);
+    res.status(500).json({
+      error: 'Failed to get other puzzles',
+      message: error.message
+    });
+  }
+});
 
-
+/**
+ * GET /api/puzzles/generate-more
+ * Generate more puzzles for a user
+ */
+router.get('/generate-more', async (req, res) => {
+  try {
+    const { username, platform } = req.query;
+    
+    // Generate sample puzzles for the user
+    const sampleGameData = {
+      id: 'sample-game-2',
+      white: 'SamplePlayer2',
+      black: 'SampleOpponent2',
+      result: '1-0',
+      type: 'rapid',
+      pgn: '1. d4 Nf6 2. c4 e6 3. Nc3 Bb4 4. e3 O-O 5. Bd3 d5 6. Nf3 c5 7. O-O Nc6 8. a3 Bxc3 9. bxc3 dxc4 10. Bxc4 Qc7 11. Bd3 e5 12. dxe5 Nxe5 13. Nxe5 Qxe5 14. f4 Qe7 15. e4 Bg4 16. Qe1 Bxf3 17. gxf3 Qh4 18. f4 Qg4+ 19. Kh1 Qh3+ 20. Kg1 Qg4+ 21. Kh1 Qh3+ 22. Kg1 Qg4+',
+      platform: 'sample'
+    };
+    
+    const result = await puzzleGenerator.generatePuzzlesFromGameData(sampleGameData);
+    
+    if (result.puzzles && result.puzzles.length > 0) {
+      // Save puzzles to the database
+      const savedPuzzles = [];
+      for (const puzzle of result.puzzles.slice(0, 3)) { // Limit to 3 puzzles
+        const savedPuzzle = puzzleModel.createPuzzle({
+          ...puzzle,
+          userId: username || 'sample-user',
+          gameId: sampleGameData.id
+        });
+        savedPuzzles.push(savedPuzzle);
+      }
+      
+      res.json({
+        success: true,
+        puzzles: savedPuzzles,
+        message: `Generated ${savedPuzzles.length} new puzzles`
+      });
+    } else {
+      res.status(404).json({
+        error: 'Failed to generate puzzles',
+        message: 'No puzzles were generated'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error generating more puzzles:', error);
+    res.status(500).json({
+      error: 'Failed to generate more puzzles',
+      message: error.message
+    });
+  }
+});
 
 module.exports = router; 

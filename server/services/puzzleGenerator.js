@@ -539,7 +539,7 @@ class PuzzleGenerator {
       
       // Generate explanation and clue for the puzzle
       const puzzleObj = {
-        id: `puzzle_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: require('uuid').v4(), // Use proper UUID instead of custom format
         position: puzzlePosition.fen,
         solution: {
           moves: solutionMoves,
