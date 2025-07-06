@@ -669,6 +669,7 @@ const PuzzleSolver = () => {
         
         // Filter out duplicates based on FEN positions
         const uniqueRemainingPuzzles = filterDuplicatePuzzles(remainingPuzzles);
+        console.log('[DEBUG] Remaining puzzles:', remainingPuzzles.length, 'Unique remaining:', uniqueRemainingPuzzles.length);
         
         if (uniqueRemainingPuzzles.length > 0) {
           // Randomly select from remaining unique puzzles
@@ -679,17 +680,31 @@ const PuzzleSolver = () => {
           const newIndex = puzzleCollection.findIndex(p => p.id === nextPuzzle.id);
           setCurrentPuzzleIndex(newIndex);
         } else {
-          // If no unique remaining puzzles, try to find any unused puzzle
+          // If no unique remaining puzzles, try to find any unused puzzle from the full collection
           const allUnusedPuzzles = filterDuplicatePuzzles(puzzleCollection);
+          console.log('[DEBUG] All puzzles:', puzzleCollection.length, 'All unused:', allUnusedPuzzles.length);
+          
           if (allUnusedPuzzles.length > 0) {
             const randomIndex = Math.floor(Math.random() * allUnusedPuzzles.length);
             nextPuzzle = allUnusedPuzzles[randomIndex];
             const newIndex = puzzleCollection.findIndex(p => p.id === nextPuzzle.id);
             setCurrentPuzzleIndex(newIndex);
           } else {
-            // If all puzzles have been used, cycle back to the first one
-            nextPuzzle = puzzleCollection[0];
-            setCurrentPuzzleIndex(0);
+            // If all puzzles have been used, clear FEN tracking and start fresh
+            console.log('[DEBUG] All puzzles used, clearing FEN tracking to start fresh');
+            clearUsedFenPositions();
+            // Now try again with fresh tracking
+            const freshPuzzles = filterDuplicatePuzzles(puzzleCollection);
+            if (freshPuzzles.length > 0) {
+              const randomIndex = Math.floor(Math.random() * freshPuzzles.length);
+              nextPuzzle = freshPuzzles[randomIndex];
+              const newIndex = puzzleCollection.findIndex(p => p.id === nextPuzzle.id);
+              setCurrentPuzzleIndex(newIndex);
+            } else {
+              // Last resort: just pick the first puzzle
+              nextPuzzle = puzzleCollection[0];
+              setCurrentPuzzleIndex(0);
+            }
           }
         }
       } else if (otherPuzzles.length > 0) {
@@ -714,6 +729,8 @@ const PuzzleSolver = () => {
         nextPuzzle = data.puzzle;
       }
       
+      // Track this puzzle's FEN position to avoid duplicates
+      addUsedFenPosition(nextPuzzle.position);
       setPuzzle(nextPuzzle);
       setChess(new Chess(nextPuzzle.position));
       setLoading(false);
@@ -1035,20 +1052,32 @@ const PuzzleSolver = () => {
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-lg font-semibold text-gray-900">Today's Progress</h3>
-              {/* Debug reset button - only show in development */}
+              {/* Debug reset buttons - only show in development */}
               {process.env.NODE_ENV === 'development' && (
-                <button
-                  onClick={() => {
-                    localStorage.removeItem('puzzleAttempts');
-                    localStorage.removeItem('unlockPromptDate');
-                    setPuzzlesStartedToday(0);
-                    alert('Puzzle attempts reset! Refresh the page to see changes.');
-                  }}
-                  className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                  title="Reset puzzle attempts (dev only)"
-                >
-                  🔄 Reset
-                </button>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('puzzleAttempts');
+                      localStorage.removeItem('unlockPromptDate');
+                      setPuzzlesStartedToday(0);
+                      alert('Puzzle attempts reset! Refresh the page to see changes.');
+                    }}
+                    className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
+                    title="Reset puzzle attempts (dev only)"
+                  >
+                    🔄 Reset
+                  </button>
+                  <button
+                    onClick={() => {
+                      clearUsedFenPositions();
+                      alert('FEN tracking cleared! This should fix the puzzle loop.');
+                    }}
+                    className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                    title="Clear FEN tracking to fix puzzle loop (dev only)"
+                  >
+                    🔧 Fix Loop
+                  </button>
+                </div>
               )}
             </div>
             
